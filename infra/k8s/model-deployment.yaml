@@ -1,0 +1,45 @@
+apiVersion: foundrylocal.azure.com/v1
+kind: ModelDeployment
+metadata:
+  name: __MODEL_NAME__
+  namespace: foundry-local-operator
+spec:
+  workloadType: generative
+  compute: gpu
+  runtime: vllm
+  model:
+    catalog:
+      name: __MODEL_NAME__
+      version: "latest"
+  replicas: 1
+  port: 5000
+  resources:
+    requests:
+      cpu: "4"
+      memory: "32Gi"
+    limits:
+      cpu: "8"
+      memory: "64Gi"
+      gpu: 1
+  nodeSelector:
+    kubernetes.azure.com/accelerator: nvidia
+    agentpool: __GPU_POOL_NAME__
+  tolerations:
+    - key: sku
+      operator: Equal
+      value: gpu
+      effect: NoSchedule
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  endpoint:
+    enabled: false
+  vllm:
+    modelCacheStorageGi: 100
+    preferences:
+      gpu_memory_utilization: 0.92
+      max_model_len: 32768
+      dtype: bfloat16
+      max_num_seqs: 128
+      max_num_batched_tokens: 4096
+      enforce_eager: true

@@ -1,0 +1,83 @@
+application:
+  default_target: device
+  allow_fallback: false
+  fallback_order: [edge, device]
+  log_prompt_content: false
+  request_timeout_seconds: 30
+
+providers:
+  device:
+    enabled: false
+    type: openai_compatible
+    target_type: device
+    endpoint_alias: device-local
+    base_url_env: DEVICE_BASE_URL
+    api_key_env: DEVICE_API_KEY
+    model_env: DEVICE_MODEL
+    auth_mode: none
+    chat_path: /v1/chat/completions
+    health_path: /v1/models
+    capabilities:
+      disconnected_inference: true
+
+  edge:
+    enabled: false
+    type: openai_compatible
+    target_type: edge
+    endpoint_alias: factory-edge
+    base_url_env: EDGE_BASE_URL
+    api_key_env: EDGE_API_KEY
+    model_env: EDGE_MODEL
+    auth_mode: api_key
+    auth_header: api-key
+    chat_path: /v1/chat/completions
+    health_path: /v1/models
+    capabilities:
+      disconnected_inference: true
+      shared_endpoint: true
+      local_evaluation: true
+      model_management: true
+
+  cloud:
+    enabled: false
+    type: openai_compatible
+    target_type: cloud
+    endpoint_alias: approved-cloud
+    base_url_env: CLOUD_BASE_URL
+    api_key_env: CLOUD_API_KEY
+    model_env: CLOUD_MODEL
+    auth_mode: api_key
+    auth_header: api-key
+    chat_path: /v1/chat/completions
+    health_path: /v1/models
+    capabilities:
+      shared_endpoint: true
+
+  mock-device:
+    enabled: true
+    type: mock
+    target_type: device
+    endpoint_alias: simulated-device
+    model: mock-device-model-v1
+    capabilities:
+      disconnected_inference: true
+
+  mock-edge:
+    enabled: true
+    type: mock
+    target_type: edge
+    endpoint_alias: simulated-edge
+    model: mock-edge-model-v1
+    capabilities:
+      disconnected_inference: true
+      shared_endpoint: true
+
+  mock-cloud:
+    enabled: true
+    type: mock
+    target_type: cloud
+    endpoint_alias: simulated-cloud
+    model: mock-cloud-model-v1
+    capabilities:
+      shared_endpoint: true
+

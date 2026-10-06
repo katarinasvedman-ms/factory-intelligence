@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Governed Floor · Factory Operations</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261006-8">
+</head>
+<body>
+  <header class="product-header">
+    <div>
+      <p class="eyebrow">FACTORY OPERATIONS</p>
+      <h1>Governed Floor</h1>
+      <p class="subtitle">One governed flow for every machine, every vendor</p>
+    </div>
+    <nav class="view-nav" aria-label="Application views">
+      <a href="/machine">Machine</a>
+      <a class="active" href="/operations">Factory operations</a>
+      <a href="/demo">Demo control</a>
+    </nav>
+  </header>
+
+  <main class="operations-layout">
+    <aside class="panel incident-queue">
+      <div class="panel-header">
+        <div>
+          <h2>Incident queue</h2>
+          <p class="muted">All normalized machine incidents.</p>
+        </div>
+        <span id="incident-count" class="count-badge">0</span>
+      </div>
+      <div id="incident-list" class="incident-list empty">No incidents yet.</div>
+    </aside>
+
+    <section id="incident-detail" class="incident-detail">
+      <article class="panel empty-state">
+        <h2>No incident selected</h2>
+        <p class="muted">Start a guided scenario from Demo control.</p>
+      </article>
+    </section>
+  </main>
+
+  <script src="/static/operations.js?v=20261006-8"></script>
+</body>
+</html>

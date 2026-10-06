@@ -1,0 +1,76 @@
+application:
+  default_target: device
+  allow_fallback: false
+  fallback_order: [edge, device]
+  log_prompt_content: false
+  request_timeout_seconds: 180
+
+providers:
+  device:
+    enabled: true
+    type: openai_compatible
+    target_type: device
+    endpoint_alias: foundry-local-device
+    base_url_env: DEVICE_BASE_URL
+    model_env: DEVICE_MODEL
+    base_url: http://127.0.0.1:49195
+    model: qwen2.5-0.5b-instruct-openvino-gpu:2
+    auth_mode: none
+    chat_path: /v1/chat/completions
+    health_path: /v1/models
+    capabilities:
+      disconnected_inference: true
+
+  edge:
+    enabled: true
+    type: local_rag_openai
+    target_type: edge
+    endpoint_alias: foundry-cloud-grounded-slow
+    base_url_env: FOUNDRY_BASE_URL
+    api_key_env: FOUNDRY_AUTHORIZATION
+    model_env: FOUNDRY_SLOW_MODEL
+    knowledge_path: data/knowledge/source
+    auth_mode: api_key
+    auth_header: Authorization
+    chat_path: /chat/completions
+    health_path: /models
+    capabilities:
+      tool_calling: true
+      shared_endpoint: true
+      model_management: true
+
+  cloud:
+    enabled: true
+    type: openai_compatible
+    target_type: cloud
+    endpoint_alias: approved-foundry-expert
+    base_url_env: FOUNDRY_BASE_URL
+    api_key_env: FOUNDRY_AUTHORIZATION
+    model_env: FOUNDRY_EXPERT_MODEL
+    auth_mode: api_key
+    auth_header: Authorization
+    chat_path: /chat/completions
+    health_path: /models
+    capabilities:
+      shared_endpoint: true
+
+  mock-device:
+    enabled: false
+    type: mock
+    target_type: device
+    endpoint_alias: simulated-device
+    model: mock-device-model-v1
+
+  mock-edge:
+    enabled: false
+    type: mock
+    target_type: edge
+    endpoint_alias: simulated-edge
+    model: mock-edge-model-v1
+
+  mock-cloud:
+    enabled: false
+    type: mock
+    target_type: cloud
+    endpoint_alias: simulated-cloud
+    model: mock-cloud-model-v1

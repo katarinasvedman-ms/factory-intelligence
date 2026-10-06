@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: foundry-model-bridge-smoke
+  namespace: arc-rag
+spec:
+  restartPolicy: Never
+  containers:
+    - name: smoke
+      image: curlimages/curl:8.16.0
+      env:
+        - name: BRIDGE_SHARED_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: byom-api-key
+              key: BYOM_API_KEY
+      command:
+        - sh
+        - -c
+        - >
+          curl --fail-with-body --silent --show-error
+          -X POST
+          "http://foundry-model-bridge.factory-model-bridge.svc.cluster.local:8000/openai/deployments/factory-slow-gpt5-mini/chat/completions?api-version=2024-10-21"
+          -H "api-key: ${BRIDGE_SHARED_SECRET}"
+          -H "Content-Type: application/json"
+          -d '{"messages":[{"role":"user","content":"Reply with exactly: bridge-ready"}],"max_completion_tokens":64}'

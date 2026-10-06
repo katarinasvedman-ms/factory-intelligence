@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: agentic-ingress
+  namespace: arc-rag
+  labels:
+    acme-ingress-class: nginx
+spec:
+  secretName: tls-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - "__AGENTIC_DOMAIN__"

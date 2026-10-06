@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: factory-model-bridge
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: foundry-bridge
+  namespace: factory-model-bridge
+  annotations:
+    azure.workload.identity/client-id: "__MANAGED_IDENTITY_CLIENT_ID__"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: foundry-bridge-auth
+  namespace: factory-model-bridge
+type: Opaque
+stringData:
+  BRIDGE_SHARED_SECRET: "__BRIDGE_SHARED_SECRET__"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: foundry-model-bridge
+  namespace: factory-model-bridge
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: foundry-model-bridge
+  template:
+    metadata:
+      labels:
+        app: foundry-model-bridge
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: foundry-bridge
+      nodeSelector:
+        workload: factory-cpu
+      containers:
+        - name: bridge
+          image: __IMAGE__
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: FOUNDRY_ENDPOINT
+              value: "__FOUNDRY_ENDPOINT__"
+            - name: BRIDGE_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: foundry-bridge-auth
+                  key: BRIDGE_SHARED_SECRET
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: foundry-model-bridge
+  namespace: factory-model-bridge
+spec:
+  selector:
+    app: foundry-model-bridge
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-agentic-retrieval-only
+  namespace: factory-model-bridge
+spec:
+  podSelector:
+    matchLabels:
+      app: foundry-model-bridge
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: arc-rag
+      ports:
+        - protocol: TCP
+          port: 8000

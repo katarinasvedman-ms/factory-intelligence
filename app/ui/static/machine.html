@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Machine HMI · Governed Floor</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261006-6">
+</head>
+<body>
+  <header class="product-header">
+    <div>
+      <p class="eyebrow">MACHINE HMI</p>
+      <h1 id="machine-name">Waiting for machine event</h1>
+      <p class="subtitle" id="machine-subtitle">Local guidance remains available when the factory connection is unavailable.</p>
+    </div>
+    <nav class="view-nav" aria-label="Application views">
+      <a class="active" href="/machine">Machine</a>
+      <a href="/operations">Factory operations</a>
+      <a href="/demo">Demo control</a>
+    </nav>
+  </header>
+
+  <main class="hmi-layout">
+    <section class="machine-overview">
+      <article class="metric-card">
+        <span>Operating state</span>
+        <strong id="operating-state">Standby</strong>
+      </article>
+      <article class="metric-card">
+        <span>Factory connection</span>
+        <strong id="connectivity">Connected</strong>
+      </article>
+      <article class="metric-card">
+        <span>Incident status</span>
+        <strong id="incident-status">No active incident</strong>
+      </article>
+    </section>
+
+    <section class="hmi-primary">
+      <article class="panel alarm-panel">
+        <div class="section-kicker">ACTIVE ALARM</div>
+        <h2 id="alarm-title">No alarm</h2>
+        <p id="alarm-text" class="large-copy">Use Demo control to start a deterministic factory scenario.</p>
+        <dl class="detail-list">
+          <div><dt>Vendor</dt><dd id="vendor">—</dd></div>
+          <div><dt>Machine model</dt><dd id="machine-model">—</dd></div>
+          <div><dt>Normalized alarm</dt><dd id="normalized-code">—</dd></div>
+          <div><dt>Line</dt><dd id="line-id">—</dd></div>
+        </dl>
+      </article>
+
+      <article class="panel recommendation-panel">
+        <div class="section-kicker">LOCAL FAST ASSESSMENT</div>
+        <h2>Operator guidance</h2>
+        <p id="local-assessment" class="large-copy">No assessment is available yet.</p>
+        <div id="candidate-action" class="action-callout" hidden></div>
+        <p id="escalation-message" class="muted">The machine will escalate automatically when factory context is required.</p>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Machine timeline</h2>
+          <p class="muted">Governed events for this machine and incident.</p>
+        </div>
+        <a class="button-link secondary" href="/operations">Open factory operations</a>
+      </div>
+      <div id="machine-timeline" class="timeline empty">No events yet.</div>
+    </section>
+  </main>
+
+  <script src="/static/machine.js?v=20261006-6"></script>
+</body>
+</html>

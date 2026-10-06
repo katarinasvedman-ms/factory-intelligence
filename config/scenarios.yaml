@@ -1,0 +1,49 @@
+- id: robot-bearing-alarm
+  title: Robot 17 bearing alarm
+  description: Classify abnormal vibration and bearing temperature, then correlate if escalation is required.
+  default_prompt: >-
+    Robot 17 reports abnormal vibration and elevated bearing temperature.
+    Classify this synthetic alarm and propose the next safe investigative step.
+  recommended_target: auto
+  data_classification: local_only
+  requires_fast_slow: true
+  requires_shared_context: true
+  event_id: robot-17-primary
+
+- id: single-machine-alarm
+  title: Routine machine alarm
+  description: Classify a bounded single-machine synthetic event.
+  default_prompt: >-
+    Machine 08 reports a moderate vibration increase with normal temperature.
+    Classify the synthetic alarm and recommend a safe inspection step.
+  recommended_target: device
+  data_classification: local_only
+
+- id: cross-machine-correlation
+  title: Production-line correlation
+  description: Correlate synthetic events from multiple machines on one factory line.
+  default_prompt: >-
+    Correlate the recent synthetic vibration events on Line A and identify a safe
+    investigation order for maintenance staff.
+  recommended_target: edge
+  data_classification: local_only
+  requires_shared_context: true
+
+- id: maintenance-next-action
+  title: Maintenance investigation
+  description: Recommend a non-actuating maintenance investigation sequence.
+  default_prompt: >-
+    Given the synthetic bearing alarm, propose a safe investigative checklist.
+    Do not recommend autonomous actuation.
+  recommended_target: device
+  data_classification: local_only
+
+- id: management-summary
+  title: Approved management summary
+  description: Create a fleet-level summary from approved synthetic data.
+  default_prompt: >-
+    Summarize the approved synthetic factory incident for an operations leader,
+    including impact, current advisory guidance, and longer-term mitigation themes.
+  recommended_target: cloud
+  data_classification: cloud_allowed
+

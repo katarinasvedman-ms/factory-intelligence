@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Governed Floor · Incident Management Brief</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261006-10">
+</head>
+<body>
+  <header class="product-header">
+    <div>
+      <p class="eyebrow">APPROVED CLOUD ANALYSIS</p>
+      <h1>Incident Management Brief</h1>
+      <p class="subtitle">Select the scope, review exactly what leaves the factory, then invoke the Expert</p>
+    </div>
+    <nav class="view-nav" aria-label="Application views">
+      <a href="/machine">Machine</a>
+      <a href="/operations">Factory operations</a>
+      <a class="active" href="/management">Management brief</a>
+      <a href="/demo">Demo control</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="panel workflow-step">
+      <div class="step-heading">
+        <span>1</span>
+        <div>
+          <h2>Select reporting scope</h2>
+          <p class="muted">The default is a consolidated report for the rolling past 24 hours.</p>
+        </div>
+      </div>
+      <div class="scope-grid">
+        <label>Time preset
+          <select id="range-preset">
+            <option value="rolling_24h">Rolling past 24 hours</option>
+            <option value="last_7_days">Rolling past 7 days</option>
+            <option value="custom">Custom range</option>
+          </select>
+        </label>
+        <label>Report mode
+          <select id="report-mode">
+            <option value="consolidated">Consolidated report</option>
+            <option value="latest_executed">Latest executed incident</option>
+          </select>
+        </label>
+        <label>From
+          <input id="range-from" type="datetime-local">
+        </label>
+        <label>To
+          <input id="range-to" type="datetime-local">
+        </label>
+      </div>
+      <div class="actions">
+        <p>Previewing does not call a model or send data to the cloud.</p>
+        <button id="preview-brief">Preview approved data</button>
+      </div>
+    </section>
+
+    <section id="preview-section" class="panel workflow-step" hidden>
+      <div class="step-heading">
+        <span>2</span>
+        <div>
+          <h2>Review approved cloud payload</h2>
+          <p class="muted">This exact server-held snapshot will be sent when you generate the report.</p>
+        </div>
+      </div>
+      <div class="preview-summary">
+        <div><span>Selected incidents</span><strong id="preview-count"></strong></div>
+        <div><span>Target</span><strong id="preview-target"></strong></div>
+        <div><span>Expert role</span><strong id="preview-role"></strong></div>
+        <div><span>Machine authority</span><strong>None</strong></div>
+      </div>
+      <div class="preview-grid">
+        <div>
+          <h3>Exact JSON payload</h3>
+          <pre id="approved-payload" class="payload-preview"></pre>
+        </div>
+        <div>
+          <h3>Explicitly excluded</h3>
+          <ul id="payload-exclusions" class="report-list"></ul>
+          <div class="preview-identity">
+            <span>Preview ID</span>
+            <code id="preview-id"></code>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <p>The Expert can interpret these facts but cannot access omitted data or control machinery.</p>
+        <button id="generate-brief">Approve payload and generate brief</button>
+      </div>
+    </section>
+
+    <div id="management-status" class="preflight-status" role="status" aria-live="polite"></div>
+
+    <div id="brief-report" hidden>
+      <section class="panel management-hero">
+        <div>
+          <div class="section-kicker">POST-INCIDENT REVIEW</div>
+          <h2 id="brief-title"></h2>
+          <p id="brief-summary" class="large-copy"></p>
+        </div>
+        <div class="management-status">
+          <span class="badge success">APPROVED SNAPSHOT</span>
+          <span id="brief-generated" class="muted"></span>
+        </div>
+      </section>
+
+      <section class="management-facts">
+        <article class="metric-card"><span>Incidents</span><strong id="incident-count"></strong><small>Within approved scope</small></article>
+        <article class="metric-card"><span>Production lines</span><strong id="line-count"></strong><small>Represented in the report</small></article>
+        <article class="metric-card"><span>Executed</span><strong id="executed-count"></strong><small>Governed actions completed</small></article>
+        <article class="metric-card"><span>Monitoring</span><strong id="monitoring-count"></strong><small>Recovery not yet closed</small></article>
+      </section>
+
+      <section class="management-grid">
+        <article class="panel">
+          <h2>Incident outcomes</h2>
+          <ul id="incident-outcomes" class="report-list"></ul>
+        </article>
+        <article class="panel">
+          <h2>Required follow-up</h2>
+          <ul id="recommended-follow-up" class="report-list"></ul>
+        </article>
+      </section>
+
+      <section class="panel expert-recommendations">
+        <div class="panel-header">
+          <div>
+            <div class="section-kicker">CLOUD EXPERT CONTRIBUTION</div>
+            <h2>Longer-term reliability recommendations</h2>
+          </div>
+          <span id="expert-model" class="badge preview"></span>
+        </div>
+        <ol id="expert-recommendations" class="recommendation-list"></ol>
+      </section>
+
+      <section class="panel governance-envelope">
+        <div>
+          <h2>Governance envelope</h2>
+          <p>The report was generated from the exact approved preview above. The Expert received no raw telemetry, agent reasoning, operator identity, credentials, or machine authority.</p>
+        </div>
+        <dl class="detail-list">
+          <div><dt>Classification</dt><dd id="brief-classification"></dd></div>
+          <div><dt>Inference target</dt><dd id="brief-target"></dd></div>
+          <div><dt>Machine authority</dt><dd id="machine-authority"></dd></div>
+          <div><dt>Preview ID</dt><dd id="brief-preview-id"></dd></div>
+        </dl>
+        <details class="proposal-evidence">
+          <summary>View the payload used for this report</summary>
+          <pre id="generated-payload" class="payload-preview"></pre>
+        </details>
+      </section>
+    </div>
+  </main>
+
+  <script src="/static/management.js?v=20261006-10"></script>
+</body>
+</html>

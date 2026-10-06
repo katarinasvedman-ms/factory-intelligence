@@ -1,0 +1,13 @@
+collection: factory-maintenance-demo
+knowledge_source: factory-maintenance-manuals
+ingestion_job: factory-maintenance-ingest
+chunk_size: "2000"
+chunk_overlap: "200"
+parsing_mode: advanced
+refresh_interval_hours: -1
+documents:
+  - source\robot-17-service-manual.md
+  - source\bearing-maintenance-guide.md
+  - source\lubrication-procedure.md
+  - source\known-failure-patterns.md
+  - source\incident-report-124.md
