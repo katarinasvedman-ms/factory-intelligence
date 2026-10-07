@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Governed Floor</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261006-10">
+  <link rel="stylesheet" href="/static/styles.css?v=20261007-1">
 </head>
 <body>
   <header class="product-header">
@@ -31,6 +31,20 @@
         <span id="factory-connectivity-badge" class="badge preview">Checking</span>
         <button id="disconnect-factory" class="danger-secondary">Disconnect factory</button>
         <button id="reconnect-factory" class="secondary">Reconnect and sync</button>
+      </div>
+    </section>
+
+    <section class="panel connectivity-panel">
+      <div>
+        <div class="section-kicker">FLEET PUBLICATION</div>
+        <h2 id="fabric-publication-label">Checking publication status…</h2>
+        <p id="fabric-publication-detail" class="muted">
+          The current local management brief remains available whether or not Fabric publication is enabled.
+        </p>
+      </div>
+      <div class="connectivity-actions">
+        <span id="fabric-publication-badge" class="badge preview">Checking</span>
+        <small id="fabric-publication-counts" class="muted"></small>
       </div>
     </section>
 
@@ -191,6 +205,6 @@
 
   </main>
 
-  <script src="/static/app.js?v=20261006-10"></script>
+  <script src="/static/app.js?v=20261007-1"></script>
 </body>
 </html>

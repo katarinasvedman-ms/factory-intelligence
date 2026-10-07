@@ -1,5 +1,6 @@
 mod actions;
 mod coordinator;
+mod fabric;
 mod governed_floor;
 mod guard;
 mod incident_store;
@@ -10,6 +11,10 @@ mod vendors;
 
 pub use actions::ActionService;
 pub use coordinator::FastSlowCoordinator;
+pub use fabric::{
+    DisabledPublisher, EventHubPublisher, FabricPublicationService, FabricSettings,
+    IncidentEventPublisher,
+};
 pub use governed_floor::GovernedFloorService;
 pub use guard::GuardService;
 pub use incident_store::IncidentStore;

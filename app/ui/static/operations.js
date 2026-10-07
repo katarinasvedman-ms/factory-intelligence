@@ -77,6 +77,7 @@ function proposalHtml(record) {
         }</p>
       </article>`;
   }
+  const grounded = proposal.sources.length > 0;
   const citations = proposal.sources.length
     ? proposal.sources.map((source, index) => `
         <li id="proposal-source-${index + 1}">
@@ -85,7 +86,7 @@ function proposalHtml(record) {
           <span>${escapeHtml(source.source || "")}</span>
           ${source.excerpt ? `<p>${escapeHtml(source.excerpt)}</p>` : ""}
         </li>`).join("")
-    : "<li>No external source was used for this governance test.</li>";
+    : "<li>No grounded source was returned. This proposal cannot be approved.</li>";
   const operatorSummary = proposal.operator_summary ||
     "Factory analysis produced a proposal. Review the governed action and supporting evidence before deciding.";
   const reduction = proposal.proposed_action.parameters.reduction_percent;
@@ -96,7 +97,7 @@ function proposalHtml(record) {
       <p>${escapeHtml(decision.reason)}</p>
       ${decision.outcome ? `<p>${escapeHtml(decision.outcome)}</p>` : ""}
     </div>` : "";
-  const controls = record.status === "awaiting_approval" ? `
+  const controls = record.status === "awaiting_approval" && grounded ? `
     <div class="approval-bar">
       <label>Operator <input id="operations-operator" value="Factory Operator" autocomplete="off"></label>
       <button data-decision="reject" class="danger-secondary">Reject</button>
@@ -104,7 +105,7 @@ function proposalHtml(record) {
     </div>` : "";
   return `
     <article class="panel proposal-panel">
-      <div class="section-kicker">GROUNDED FACTORY PROPOSAL</div>
+      <div class="section-kicker">${grounded ? "GROUNDED FACTORY PROPOSAL" : "UNGROUNDED FACTORY ANALYSIS"}</div>
       <h2>${escapeHtml(proposal.root_cause_hypothesis)}</h2>
       <p class="large-copy operator-summary">${escapeHtml(operatorSummary)}</p>
       <div class="proposal-action">

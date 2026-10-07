@@ -382,6 +382,41 @@ pub struct AuditEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FabricIncidentEvent {
+    pub schema_version: u32,
+    pub event_id: String,
+    pub occurred_at: DateTime<Utc>,
+    pub factory_id: String,
+    pub line_id: String,
+    pub machine_id: String,
+    pub incident_id: String,
+    pub event_type: String,
+    pub incident_status: IncidentStatus,
+    pub severity: String,
+    pub summary: String,
+    pub correlation_id: Option<String>,
+    pub details: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct FabricOutboxEvent {
+    pub event_id: String,
+    pub payload: FabricIncidentEvent,
+    pub attempt_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FabricPublicationStatus {
+    pub enabled: bool,
+    pub factory_id: String,
+    pub pending: u64,
+    pub published: u64,
+    pub failed: u64,
+    pub last_success_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IncidentRecord {
     pub incident: IncidentPackage,
     pub status: IncidentStatus,

@@ -9,6 +9,8 @@ license = "MIT"
 anyhow = "1"
 async-trait = "0.1"
 axum = "0.8"
+azure_identity = { version = "1.1.0-beta.1", features = ["tokio"] }
+azure_messaging_eventhubs = "0.16.0"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 futures = "0.3"

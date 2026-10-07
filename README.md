@@ -115,6 +115,30 @@ For the network-loss scenario:
 Connectivity state and queued incidents are persisted in SQLite. Repeated reconnect
 operations do not create duplicate proposals.
 
+## Optional Fabric fleet publication
+
+The existing local management brief remains the default and does not depend on
+Fabric. An optional background publisher can also project the incident audit history
+into governed, append-only fleet events for a Fabric Eventstream custom endpoint.
+The application stores each projected event in the same SQLite transaction as the
+incident snapshot, retries delivery independently, and deduplicates by `event_id`.
+
+Only an allowlisted event projection is published. Raw alarm text, operator identity,
+model reasoning, manual content, credentials, and infrastructure details are
+excluded. Configure the optional publisher through `.env.local`:
+
+```dotenv
+FACTORY_ID=factory-demo-01
+FABRIC_EXPORT_ENABLED=true
+FABRIC_EVENTHUB_HOST=<eventstream-namespace>.servicebus.windows.net
+FABRIC_EVENTHUB_NAME=<eventstream-entity-name>
+```
+
+The local demo uses the current Azure CLI identity for Entra authentication.
+`GET /api/demo/fabric/status` reports pending, published, and failed outbox events.
+When Fabric export is disabled or unavailable, incident handling and the current
+local brief continue normally.
+
 Run the end-to-end guided rehearsal against a started application with:
 
 ```powershell
@@ -213,7 +237,28 @@ OpenAI-compatible service has identical URL construction.
 
 Deploy Agentic Retrieval in `combined` mode, ingest the synthetic corpus under
 `data\knowledge\source`, create an indexed-source MCP knowledge source, and link it
-to the default knowledge base. Then run:
+to the default knowledge base. For the AKS demo, copy `.env.example` to the ignored
+`.env.local` file and set:
+
+```dotenv
+FACTORY_AGENTIC_DOMAIN=<agentic-retrieval-domain>
+FACTORY_AGENTIC_CLIENT_ID=<agentic-retrieval-app-client-id>
+FACTORY_RESOURCE_GROUP=<aks-resource-group>
+FACTORY_CLUSTER_NAME=<aks-cluster-name>
+FOUNDRY_BASE_URL=https://<foundry-resource>.openai.azure.com/openai/v1
+FOUNDRY_EXPERT_MODEL=<expert-model-deployment>
+```
+
+Then start the complete demo directly:
+
+```powershell
+.\run-aks-agentic-demo.ps1
+```
+
+Explicit parameters and existing process environment variables take precedence
+over `.env.local`. When the configured AKS cluster is stopped, the launcher starts
+it and waits for Agentic Retrieval to become available. The lower-level
+Agentic-only launcher can still be run with:
 
 ```powershell
 .\run-agentic-demo.ps1 `

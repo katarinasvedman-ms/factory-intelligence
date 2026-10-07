@@ -3,7 +3,8 @@ param(
     [string]$EdgeRagDisplayName = "Factory Intelligence EdgeRAG",
     [string]$FoundryDisplayName = "Factory Intelligence Foundry Local",
     [string]$DomainName = "arcrag.factory-intelligence.test",
-    [string]$CollectionName = "factory-maintenance-demo"
+    [string]$CollectionName = "factory-maintenance-demo",
+    [string]$AgenticRuntimePrincipalId = $env:FACTORY_AGENTIC_RUNTIME_PRINCIPAL_ID
 )
 
 $ErrorActionPreference = "Stop"
@@ -142,6 +143,39 @@ function Add-UserRoleAssignment {
     }
 }
 
+function Add-ServicePrincipalRoleAssignment {
+    param(
+        [string]$PrincipalId,
+        [string]$ResourceServicePrincipalId,
+        [string]$AppRoleId
+    )
+
+    $principal = az ad sp show `
+        --id $PrincipalId `
+        --query "{id:id,displayName:displayName}" `
+        --output json | ConvertFrom-Json
+    Assert-AzSuccess "Query Agentic runtime service principal $PrincipalId"
+
+    $assignments = az rest `
+        --method GET `
+        --url "https://graph.microsoft.com/v1.0/servicePrincipals/$($principal.id)/appRoleAssignments" `
+        --output json | ConvertFrom-Json
+    Assert-AzSuccess "Query app-role assignments for service principal $($principal.id)"
+    $existing = $assignments.value | Where-Object {
+        $_.resourceId -eq $ResourceServicePrincipalId -and $_.appRoleId -eq $AppRoleId
+    } | Select-Object -First 1
+    if (-not $existing) {
+        Invoke-GraphJson `
+            -Method POST `
+            -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$($principal.id)/appRoleAssignments" `
+            -Body @{
+                principalId = $principal.id
+                resourceId = $ResourceServicePrincipalId
+                appRoleId = $AppRoleId
+            } | Out-Null
+    }
+}
+
 $edgeRag = Get-OrCreateApplication `
     -DisplayName $EdgeRagDisplayName `
     -SignInAudience AzureADMultipleOrgs
@@ -155,7 +189,7 @@ $edgeRagExistingRoles = @($edgeRagManifest.appRoles)
 
 $edgeRagRoles = @(
     (New-AppRole -DisplayName "EdgeRAGDeveloper" -Value "EdgeRAGDeveloper" -AllowedMemberTypes @("User") -ExistingRoles $edgeRagExistingRoles),
-    (New-AppRole -DisplayName "EdgeRAGEndUser" -Value "EdgeRAGEndUser" -AllowedMemberTypes @("User") -ExistingRoles $edgeRagExistingRoles),
+    (New-AppRole -DisplayName "EdgeRAGEndUser" -Value "EdgeRAGEndUser" -AllowedMemberTypes @("User", "Application") -ExistingRoles $edgeRagExistingRoles),
     (New-AppRole -DisplayName "Default collection" -Value "edgeragapp" -AllowedMemberTypes @("User") -ExistingRoles $edgeRagExistingRoles),
     (New-AppRole -DisplayName "Factory maintenance collection" -Value $CollectionName -AllowedMemberTypes @("User") -ExistingRoles $edgeRagExistingRoles)
 )
@@ -178,6 +212,16 @@ foreach ($role in $edgeRagRoles) {
         -UserId $currentUserId `
         -ServicePrincipalId $edgeRag.ServicePrincipalId `
         -AppRoleId $role.id
+}
+
+$edgeRagEndUserRole = $edgeRagRoles |
+    Where-Object { $_.value -eq "EdgeRAGEndUser" } |
+    Select-Object -First 1
+if ($AgenticRuntimePrincipalId) {
+    Add-ServicePrincipalRoleAssignment `
+        -PrincipalId $AgenticRuntimePrincipalId `
+        -ResourceServicePrincipalId $edgeRag.ServicePrincipalId `
+        -AppRoleId $edgeRagEndUserRole.id
 }
 
 $foundry = Get-OrCreateApplication `
@@ -259,6 +303,7 @@ Set-ApplicationManifest `
     EdgeRagClientId = $edgeRag.AppId
     EdgeRagObjectId = $edgeRag.ObjectId
     EdgeRagServicePrincipalId = $edgeRag.ServicePrincipalId
+    AgenticRuntimePrincipalId = $AgenticRuntimePrincipalId
     FoundryClientId = $foundry.AppId
     FoundryObjectId = $foundry.ObjectId
     FoundryServicePrincipalId = $foundry.ServicePrincipalId

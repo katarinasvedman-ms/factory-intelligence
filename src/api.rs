@@ -6,7 +6,10 @@ use crate::{
         TargetType,
     },
     providers::ProviderRegistry,
-    services::{ActionService, FastSlowCoordinator, GovernedFloorService, ScenarioService},
+    services::{
+        ActionService, FabricPublicationService, FastSlowCoordinator, GovernedFloorService,
+        ScenarioService,
+    },
 };
 use axum::{
     Json, Router,
@@ -28,6 +31,7 @@ pub struct AppState {
     pub coordinator: FastSlowCoordinator,
     pub actions: ActionService,
     pub governed_floor: GovernedFloorService,
+    pub fabric: FabricPublicationService,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -73,6 +77,7 @@ pub fn router(state: AppState) -> Router {
             post(create_management_brief),
         )
         .route("/api/demo/connectivity", get(get_factory_connectivity))
+        .route("/api/demo/fabric/status", get(get_fabric_status))
         .route(
             "/api/demo/connectivity/{state}",
             post(set_factory_connectivity),
@@ -296,6 +301,10 @@ async fn get_factory_connectivity(State(state): State<AppState>) -> Result<Json<
     Ok(Json(json!({
         "connected": state.governed_floor.factory_connected()?
     })))
+}
+
+async fn get_fabric_status(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(state.fabric.status()?)))
 }
 
 async fn set_factory_connectivity(

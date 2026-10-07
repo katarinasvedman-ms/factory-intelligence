@@ -4,8 +4,9 @@ use factory_intelligence::{
     config::load_settings,
     providers::ProviderRegistry,
     services::{
-        ActionService, FastSlowCoordinator, GovernedFloorService, IncidentStore, InferenceService,
-        RoutingPolicy, ScenarioService,
+        ActionService, DisabledPublisher, EventHubPublisher, FabricPublicationService,
+        FabricSettings, FastSlowCoordinator, GovernedFloorService, IncidentEventPublisher,
+        IncidentStore, InferenceService, RoutingPolicy, ScenarioService,
     },
 };
 use std::{env, sync::Arc};
@@ -27,11 +28,17 @@ async fn main() -> Result<()> {
     let scenarios = ScenarioService::load()?;
     let inference = InferenceService::new(settings.application.clone(), registry.clone());
     let coordinator = FastSlowCoordinator::new(scenarios.clone(), RoutingPolicy, inference);
-    let governed_floor = GovernedFloorService::new(
-        IncidentStore::open_default()?,
-        scenarios.clone(),
-        coordinator.clone(),
-    );
+    let fabric_settings = FabricSettings::from_env()?;
+    let incident_store = IncidentStore::open_default()?;
+    let publisher: Arc<dyn IncidentEventPublisher> = if fabric_settings.enabled {
+        Arc::new(EventHubPublisher::new(&fabric_settings)?)
+    } else {
+        Arc::new(DisabledPublisher)
+    };
+    let fabric = FabricPublicationService::new(incident_store.clone(), fabric_settings, publisher);
+    let governed_floor =
+        GovernedFloorService::new(incident_store, scenarios.clone(), coordinator.clone());
+    tokio::spawn(fabric.clone().run());
     let state = AppState {
         settings: Arc::new(settings),
         registry,
@@ -39,6 +46,7 @@ async fn main() -> Result<()> {
         coordinator,
         actions: ActionService::default(),
         governed_floor,
+        fabric,
     };
     let address = env::var("BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:8000".into());
     let listener = TcpListener::bind(&address)

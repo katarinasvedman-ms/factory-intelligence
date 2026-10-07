@@ -1,8 +1,8 @@
 use crate::{
     domain::{
         ActionProposal, AuditEvent, ConnectivityState, IncidentPackage, IncidentRecord,
-        IncidentStatus, LocalAssessment, ManagementBriefMode, ManagementBriefPreviewRequest,
-        Message, ProposedAction, RequestedTarget, RiskLevel,
+        IncidentStatus, KnowledgeCitation, LocalAssessment, ManagementBriefMode,
+        ManagementBriefPreviewRequest, Message, ProposedAction, RequestedTarget, RiskLevel,
     },
     services::{
         FastSlowCoordinator, GuardService, IncidentStore, ScenarioService, VendorSimulator,
@@ -112,6 +112,11 @@ impl GovernedFloorService {
             .proposal
             .clone()
             .ok_or_else(|| anyhow!("incident has no action proposal"))?;
+        if proposal.sources.is_empty() {
+            return Err(anyhow!(
+                "incident proposal is ungrounded and cannot be submitted to the Guard"
+            ));
+        }
         let decision = self.guard.evaluate(&record, &proposal, operator_id);
         record.status = if decision.permitted {
             IncidentStatus::Executed
@@ -554,6 +559,7 @@ impl GovernedFloorService {
             .as_ref()
             .map(|evidence| evidence.citations.clone())
             .unwrap_or_default();
+        let grounded = !sources.is_empty();
         let proposal = ActionProposal {
             proposal_id: Uuid::new_v4().to_string(),
             incident_id: upstream.incident_id.clone(),
@@ -592,13 +598,25 @@ impl GovernedFloorService {
                 ),
                 audit_event(
                     &upstream.incident_id,
-                    "proposal_created",
-                    "The slow agent produced a grounded proposal awaiting operator approval.",
+                    if grounded {
+                        "proposal_created"
+                    } else {
+                        "proposal_ungrounded"
+                    },
+                    if grounded {
+                        "The slow agent produced a grounded proposal awaiting operator approval."
+                    } else {
+                        "The slow agent returned no sources, so the proposal was escalated and cannot be approved."
+                    },
                     json!({"proposal_id": proposal.proposal_id, "source_count": proposal.sources.len()}),
                 ),
             ],
             incident: upstream,
-            status: IncidentStatus::AwaitingApproval,
+            status: if grounded {
+                IncidentStatus::AwaitingApproval
+            } else {
+                IncidentStatus::Escalated
+            },
             proposal: Some(proposal),
             guard_decision: None,
             created_at: now,
@@ -654,7 +672,14 @@ impl GovernedFloorService {
                 parameters: json!({"reduction_percent": 45}),
                 risk_level: RiskLevel::High,
             },
-            sources: vec![],
+            sources: vec![KnowledgeCitation {
+                title: Some("Governed speed-reduction policy".into()),
+                source: Some("local-guard-policy".into()),
+                excerpt: Some(
+                    "Simulated speed reductions are permitted only within the configured 5-30% range."
+                        .into(),
+                ),
+            }],
             alternatives: vec![],
             created_at: Utc::now(),
         };
@@ -814,6 +839,7 @@ impl GovernedFloorService {
             .as_ref()
             .map(|evidence| evidence.citations.clone())
             .unwrap_or_default();
+        let grounded = !sources.is_empty();
         let proposal = ActionProposal {
             proposal_id: Uuid::new_v4().to_string(),
             incident_id: record.incident.incident_id.clone(),
@@ -836,13 +862,25 @@ impl GovernedFloorService {
         };
         record.incident.connectivity = ConnectivityState::Connected;
         record.incident.context["queued_for_sync"] = json!(false);
-        record.status = IncidentStatus::AwaitingApproval;
+        record.status = if grounded {
+            IncidentStatus::AwaitingApproval
+        } else {
+            IncidentStatus::Escalated
+        };
         record.proposal = Some(proposal.clone());
         record.updated_at = Utc::now();
         record.audit.push(audit_event(
             &record.incident.incident_id,
-            "incident_synchronized",
-            "The queued incident synchronized exactly once and received a grounded factory proposal.",
+            if grounded {
+                "incident_synchronized"
+            } else {
+                "synchronization_ungrounded"
+            },
+            if grounded {
+                "The queued incident synchronized exactly once and received a grounded factory proposal."
+            } else {
+                "The queued incident synchronized, but no sources were returned; operator approval remains unavailable."
+            },
             json!({
                 "proposal_id": proposal.proposal_id,
                 "source_count": proposal.sources.len()

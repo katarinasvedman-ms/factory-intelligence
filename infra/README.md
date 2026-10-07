@@ -121,6 +121,17 @@ through the Windows hosts file after ingress receives an IP:
 
 Save the returned `EdgeRagClientId` and `FoundryClientId`.
 
+After the Agentic Retrieval extension creates its managed identity, rerun the script
+with that service principal's object ID so the runtime can authenticate to the MCP
+server without relying on a delegated user token:
+
+```powershell
+.\infra\create-entra-apps.ps1 `
+  -AgenticRuntimePrincipalId "<agentic-runtime-service-principal-object-id>"
+```
+
+This grants only the `EdgeRAGEndUser` application role. The script is idempotent.
+
 ## 4. Bootstrap Arc and preview extensions
 
 Install Helm first, then:

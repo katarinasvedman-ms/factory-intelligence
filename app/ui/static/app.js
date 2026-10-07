@@ -313,6 +313,7 @@ async function runGuidedScenario(scenarioId, button) {
           ? "Machine HMI"
           : "Governed Floor"
       }</a>…`;
+    await refreshFabricStatus();
     window.setTimeout(() => {
       window.location.assign(destination);
     }, 700);
@@ -331,7 +332,7 @@ async function resetGuidedDemo() {
     const response = await fetch("/api/demo/reset", { method: "POST" });
     if (!response.ok) throw new Error("Reset failed");
     el("guided-demo-status").textContent = "Guided demo incidents cleared.";
-    await refreshFactoryConnectivity();
+    await Promise.all([refreshFactoryConnectivity(), refreshFabricStatus()]);
   } catch (error) {
     el("guided-demo-status").textContent = error.message;
   } finally {
@@ -357,6 +358,50 @@ async function refreshFactoryConnectivity() {
   renderFactoryConnectivity(body.connected);
 }
 
+function renderFabricStatus(status) {
+  const badge = el("fabric-publication-badge");
+  const label = el("fabric-publication-label");
+  const detail = el("fabric-publication-detail");
+  const counts = el("fabric-publication-counts");
+  counts.textContent =
+    `${status.pending} pending · ${status.published} published · ${status.failed} failed`;
+  if (!status.enabled) {
+    label.textContent = "Local brief active; Fabric export disabled";
+    detail.textContent =
+      "Incidents remain available for the existing governed local brief. Fabric can be enabled independently.";
+    badge.textContent = "Disabled";
+    badge.className = "badge preview";
+    return;
+  }
+  if (status.failed > 0) {
+    label.textContent = "Fabric publication needs attention";
+    detail.textContent = status.last_error || "One or more governed events could not be published.";
+    badge.textContent = "Failed";
+    badge.className = "badge failure";
+    return;
+  }
+  label.textContent = "Publishing governed events to Fabric";
+  detail.textContent =
+    `Factory ${status.factory_id} publishes sanitized lifecycle events without affecting local control or reporting.`;
+  badge.textContent = status.pending > 0 ? "Synchronizing" : "Connected";
+  badge.className = `badge ${status.pending > 0 ? "preview" : "success"}`;
+}
+
+async function refreshFabricStatus() {
+  try {
+    const response = await fetch("/api/demo/fabric/status");
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || "Could not read Fabric publication status");
+    renderFabricStatus(body);
+  } catch (error) {
+    el("fabric-publication-label").textContent = "Fabric publication status unavailable";
+    el("fabric-publication-detail").textContent = error.message;
+    el("fabric-publication-badge").textContent = "Unavailable";
+    el("fabric-publication-badge").className = "badge failure";
+    el("fabric-publication-counts").textContent = "";
+  }
+}
+
 async function setFactoryConnectivity(connected) {
   const button = connected ? el("reconnect-factory") : el("disconnect-factory");
   button.disabled = true;
@@ -376,7 +421,7 @@ async function setFactoryConnectivity(connected) {
       : 'Factory offline. Run <strong>Network loss and recovery</strong> to create a queued incident.';
   } catch (error) {
     el("guided-demo-status").textContent = `Connectivity change failed: ${error.message}`;
-    await refreshFactoryConnectivity();
+    await Promise.all([refreshFactoryConnectivity(), refreshFabricStatus()]);
   } finally {
     el("disconnect-factory").textContent = "Disconnect factory";
     el("reconnect-factory").textContent = "Reconnect and sync";

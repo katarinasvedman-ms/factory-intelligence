@@ -135,6 +135,40 @@ Management reporting uses a separate governed data boundary:
 6. The application derives factual counts and outcomes; the Expert contributes only
    longer-term reliability recommendations and has no machine authority.
 
+## Optional Fabric publication boundary
+
+Fabric publication supplements rather than replaces the existing local management
+brief. `IncidentStore` persists the mutable incident snapshot and inserts sanitized
+audit-event projections into `fabric_outbox` within the same SQLite transaction.
+The audit `event_id` is the outbox primary key, making repeated incident saves
+idempotent.
+
+```text
+IncidentRecord + AuditEvent
+        |
+        v
+allowlisted FabricIncidentEvent
+        |
+        v
+SQLite fabric_outbox
+        |
+        v
+background Event Hubs publisher
+        |
+        v
+Fabric Eventstream -> Eventhouse
+```
+
+The publisher never participates in incident handling, operator approval, Guard
+evaluation, machine recovery, or local brief generation. A Fabric failure records a
+bounded error and retry schedule in the outbox while factory operations continue.
+Publication is disabled unless `FABRIC_EXPORT_ENABLED=true`.
+
+The fleet event projection includes factory, line, machine, incident, lifecycle
+event, status, severity and explicitly approved detail fields. It excludes raw alarm
+text, operator identity, model reasoning, manual content, credentials, endpoints and
+connector details.
+
 ## Evidence and observability
 
 Normalized responses expose:
