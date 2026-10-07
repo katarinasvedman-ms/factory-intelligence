@@ -31,6 +31,38 @@ function statusClass(status) {
   return "preview";
 }
 
+function routineResponseHtml(record) {
+  const triage = record.incident.context.local_triage;
+  if (record.status !== "locally_assessed" || !triage) return "";
+  return `
+    <article class="panel local-response-plan">
+      <div class="section-kicker">FAST LOCAL TRIAGE</div>
+      <h2>Inspect within 30 minutes — continue under observation</h2>
+      <p class="large-copy">${escapeHtml(triage.decision)}</p>
+      <div class="triage-grid">
+        <div>
+          <span>Measured condition</span>
+          <strong>${escapeHtml(Number(triage.vibration_mm_s).toFixed(1))} mm/s</strong>
+          <small>${escapeHtml(triage.condition)}<br>${escapeHtml(Number(triage.bearing_temperature_c).toFixed(0))} C bearing temperature</small>
+        </div>
+        <div>
+          <span>Recommended response</span>
+          <strong>Request inspection</strong>
+          <small>${escapeHtml(triage.recommended_action)}</small>
+        </div>
+        <div>
+          <span>Escalation boundary</span>
+          <strong>7.1 mm/s or 75 C</strong>
+          <small>${escapeHtml(triage.escalation_rule)}</small>
+        </div>
+      </div>
+      <div class="triage-guidance">
+        <div><strong>Operating guidance</strong><p>${escapeHtml(triage.operating_guidance)}</p></div>
+        <div><strong>Demo value</strong><p>${escapeHtml(triage.value)}</p></div>
+      </div>
+    </article>`;
+}
+
 function renderList() {
   el("incident-count").textContent = state.incidents.length;
   if (!state.incidents.length) {
@@ -62,6 +94,8 @@ function renderList() {
 function proposalHtml(record) {
   const proposal = record.proposal;
   if (!proposal) {
+    const routineResponse = routineResponseHtml(record);
+    if (routineResponse) return routineResponse;
     const queued = record.incident.context.queued_for_sync === true;
     const monitoring = record.status === "monitoring";
     return `
@@ -73,7 +107,7 @@ function proposalHtml(record) {
             ? "The machine handled this incident locally while factory operations were offline. Reconnect from Demo control to synchronize it."
             : monitoring
               ? "The governed action executed on the upstream machine. Monitor Packer 12 for restored product flow before resolving this downstream incident."
-            : "This incident is informational, locally resolved, or correlated as a downstream effect."
+            : "This incident is informational, locally assessed, or correlated as a downstream effect."
         }</p>
       </article>`;
   }
@@ -151,7 +185,7 @@ function renderDetail() {
         <div><dt>Connectivity</dt><dd>${escapeHtml(display(incident.connectivity))}</dd></div>
       </dl>
       <div class="local-assessment">
-        <strong>Machine-local assessment</strong>
+        <strong>Machine-local decision summary</strong>
         <p>${escapeHtml(incident.local_assessment?.summary || "No local assessment recorded.")}</p>
       </div>
     </article>

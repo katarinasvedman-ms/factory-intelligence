@@ -45,8 +45,8 @@ function render(record) {
         ? "Factory connectivity recovered. The queued incident is synchronizing now."
         : record.proposal
           ? "Factory correlation completed. The proposal is awaiting an operator decision in Governed Floor."
-          : record.status === "resolved"
-            ? "Local guidance was sufficient; no factory escalation was required."
+          : record.status === "locally_assessed"
+            ? "Local assessment completed and inspection is recommended. The incident remains open until the alarm clears and recovery is verified."
             : "The incident has been escalated to factory operations.";
   el("machine-timeline").className = "timeline";
   el("machine-timeline").innerHTML = record.audit.map((event) => `

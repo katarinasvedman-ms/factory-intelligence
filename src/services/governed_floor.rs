@@ -456,8 +456,47 @@ impl GovernedFloorService {
         let response = run
             .fast_response
             .ok_or_else(|| anyhow!("routine scenario returned no local assessment"))?;
+        let vibration_mm_s = package
+            .context
+            .pointer("/signals/vibration_mm_s")
+            .and_then(Value::as_f64)
+            .unwrap_or_default();
+        let bearing_temperature_c = package
+            .context
+            .pointer("/signals/bearing_temperature_c")
+            .and_then(Value::as_f64)
+            .unwrap_or_default();
+        let advisory_threshold_mm_s = 4.5;
+        let escalation_threshold_mm_s = 7.1;
+        let temperature_escalation_c = 75.0;
+        let percent_above_advisory =
+            ((vibration_mm_s / advisory_threshold_mm_s - 1.0) * 100.0).round();
+        package.context["local_triage"] = json!({
+            "condition": format!(
+                "Vibration is {:.0}% above the {:.1} mm/s advisory threshold.",
+                percent_above_advisory,
+                advisory_threshold_mm_s
+            ),
+            "vibration_mm_s": vibration_mm_s,
+            "bearing_temperature_c": bearing_temperature_c,
+            "recommended_action": "Inspect bearing mounting, sensor seating, and lubrication within 30 minutes.",
+            "operating_guidance": "Continue at current speed under observation; no automatic speed change is authorized.",
+            "escalation_rule": format!(
+                "Escalate if vibration reaches {:.1} mm/s, bearing temperature reaches {:.0} C, or the trend accelerates.",
+                escalation_threshold_mm_s,
+                temperature_escalation_c
+            ),
+            "decision": "Local advisory - inspection required, factory escalation not yet required.",
+            "value": "The machine converted a vendor alarm into a bounded local response plan without waiting for factory or cloud analysis."
+        });
         package.local_assessment = Some(LocalAssessment {
-            summary: response.content,
+            summary: format!(
+                "Vibration is {:.1} mm/s and bearing temperature is {:.0} C. Continue at current speed under observation, inspect the bearing within 30 minutes, and escalate at {:.1} mm/s vibration or {:.0} C.",
+                vibration_mm_s,
+                bearing_temperature_c,
+                escalation_threshold_mm_s,
+                temperature_escalation_c
+            ),
             candidate_action_id: Some("request_inspection".into()),
             confidence: response.confidence,
             model_id: response.model_id,
@@ -474,12 +513,12 @@ impl GovernedFloorService {
                 audit_event(
                     &package.incident_id,
                     "local_assessment_completed",
-                    "The machine-local fast agent completed a bounded assessment.",
-                    json!({"escalated": false}),
+                    "The machine-local fast agent completed a bounded assessment and recommended inspection.",
+                    json!({"escalated": false, "candidate_action_id": "request_inspection"}),
                 ),
             ],
             incident: package,
-            status: IncidentStatus::Resolved,
+            status: IncidentStatus::LocallyAssessed,
             proposal: None,
             guard_decision: None,
             created_at: now,

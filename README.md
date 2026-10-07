@@ -58,7 +58,7 @@ flowchart LR
     end
 
     Fast -- "Factory context required" --> Store
-    Fast -- "Resolved locally" --> Audit
+    Fast -- "Assessed locally" --> Audit
     Connector -- "Bounded request" --> HMI
 
     subgraph Fleet["Cloud and fleet operations"]
@@ -138,6 +138,35 @@ The local demo uses the current Azure CLI identity for Entra authentication.
 `GET /api/demo/fabric/status` reports pending, published, and failed outbox events.
 When Fabric export is disabled or unavailable, incident handling and the current
 local brief continue normally.
+
+### Build the Foundry fleet-management agent
+
+The optional `factory-fleet-manager` prompt agent uses GPT-5.4 for orchestration
+and the published `factory-fleet-analyst` Fabric Data Agent through a delegated
+Fabric IQ connection. The Fabric tool receives the signed-in user's identity and
+honors that user's Fabric permissions.
+
+Set these values in the ignored `.env.local` file or in the process environment:
+
+```dotenv
+FOUNDRY_PROJECT_ENDPOINT=https://<foundry-resource>.services.ai.azure.com/api/projects/<project>
+FOUNDRY_AGENT_MODEL=factory-expert-gpt54
+FOUNDRY_FABRIC_CONNECTION_NAME=factory-fabric-iq
+FOUNDRY_FLEET_AGENT_NAME=factory-fleet-manager
+FABRIC_WORKSPACE_ID=<fabric-workspace-id>
+FABRIC_DATA_AGENT_ID=<published-data-agent-id>
+FABRIC_KQL_DATABASE_ID=<kql-database-id>
+```
+
+Then create or update the Fabric IQ connection, harden the Data Agent to structured
+columns, publish it, create a new Foundry agent version, and run a live smoke test:
+
+```powershell
+.\infra\configure-foundry-fleet-agent.ps1 -SmokeTest
+```
+
+The local management brief remains independent of this path. The Foundry/Fabric
+agent is an optional fleet-analytics path and has no machine-control authority.
 
 Run the end-to-end guided rehearsal against a started application with:
 

@@ -43,8 +43,8 @@ async fn main() -> Result<()> {
     ensure!(
         routine_records
             .first()
-            .is_some_and(|record| record["status"] == "resolved"),
-        "Routine alarm did not resolve locally"
+            .is_some_and(|record| record["status"] == "locally_assessed"),
+        "Routine alarm was not left open after local assessment"
     );
     println!("PASS routine local alarm");
 

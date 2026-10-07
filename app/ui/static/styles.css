@@ -104,6 +104,15 @@ th { color: var(--muted); }
 .detail-list dt { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; }
 .detail-list dd { margin: 4px 0 0; font-weight: 750; }
 .action-callout, .local-assessment, .proposal-action, .guard-result { background: #0b151e; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 16px; }
+.local-assessment p { margin-bottom: 0; line-height: 1.55; }
+.triage-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.triage-grid > div { background: #0b151e; border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 7px; }
+.triage-grid span { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; }
+.triage-grid strong { color: var(--cyan); font-size: 1.05rem; }
+.triage-grid small { color: var(--muted); line-height: 1.45; }
+.triage-guidance { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.triage-guidance > div { border-left: 3px solid var(--cyan); padding: 4px 0 4px 12px; }
+.triage-guidance p { color: var(--muted); line-height: 1.55; margin: 5px 0 0; }
 .timeline article { display: grid; grid-template-columns: 90px 1fr; gap: 16px; border-top: 1px solid var(--border); padding: 12px 0; }
 .timeline article:first-child { border-top: 0; }
 .timeline time { color: var(--muted); font-size: .76rem; }
@@ -184,7 +193,7 @@ th { color: var(--muted); }
   .control-panel, .results-grid, .agentic-grid, .action-controls, .action-approval { grid-template-columns: 1fr; }
   .panel-header { align-items: stretch; flex-direction: column; }
   .actions { align-items: stretch; flex-direction: column; }
-  .guided-scenarios, .machine-overview, .hmi-primary, .operations-layout, .approval-bar, .management-facts, .management-grid, .recommendation-list, .scope-grid, .preview-summary, .preview-grid { grid-template-columns: 1fr; }
+  .guided-scenarios, .machine-overview, .hmi-primary, .operations-layout, .approval-bar, .management-facts, .management-grid, .recommendation-list, .scope-grid, .preview-summary, .preview-grid, .triage-grid, .triage-guidance { grid-template-columns: 1fr; }
   .connectivity-panel { align-items: stretch; flex-direction: column; }
   .management-hero { flex-direction: column; }
   .management-status { align-items: flex-start; }
