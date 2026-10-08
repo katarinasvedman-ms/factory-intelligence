@@ -3,6 +3,7 @@ use chrono::{Duration, Utc};
 use clap::Parser;
 use reqwest::Client;
 use serde_json::{Value, json};
+use tokio::time::{Duration as TokioDuration, sleep};
 
 #[derive(Parser)]
 struct Args {
@@ -31,6 +32,7 @@ async fn main() -> Result<()> {
             .as_str()
             .ok_or_else(|| anyhow!("unsafe incident has no id"))?,
         "approve",
+        "factory_operations",
     )
     .await?;
     ensure!(
@@ -40,13 +42,41 @@ async fn main() -> Result<()> {
     println!("PASS governance rejection");
 
     let routine_records = run_scenario(&client, &args.base_url, "routine-local").await?;
+    let routine = routine_records
+        .first()
+        .ok_or_else(|| anyhow!("routine scenario returned no incident"))?;
     ensure!(
-        routine_records
-            .first()
-            .is_some_and(|record| record["status"] == "locally_assessed"),
-        "Routine alarm was not left open after local assessment"
+        routine["status"] == "correlating" || routine["status"] == "awaiting_approval",
+        "Routine alarm did not request a factory advisory"
     );
-    println!("PASS routine local alarm");
+    let routine_id = routine["incident"]["incident_id"]
+        .as_str()
+        .ok_or_else(|| anyhow!("routine incident has no id"))?;
+    let advised = wait_for_advisory(&client, &args.base_url, routine_id).await?;
+    ensure!(
+        advised["status"] == "awaiting_approval"
+            && advised["proposal"]["sources"]
+                .as_array()
+                .is_some_and(|sources| !sources.is_empty()),
+        "Routine incident did not receive a grounded advisory"
+    );
+    let routine_approved = decide(
+        &client,
+        &args.base_url,
+        routine_id,
+        "approve",
+        "machine_hmi",
+    )
+    .await?;
+    ensure!(
+        routine_approved["status"] == "executed"
+            && routine_approved["audit"]
+                .as_array()
+                .and_then(|events| events.last())
+                .is_some_and(|event| event["details"]["decision_source"] == "machine_hmi"),
+        "Machine-HMI approval did not execute through the shared Guard"
+    );
+    println!("PASS machine advisory and HMI approval");
 
     set_connectivity(&client, &args.base_url, "offline").await?;
     let offline_records = run_scenario(&client, &args.base_url, "network-loss").await?;
@@ -97,6 +127,7 @@ async fn main() -> Result<()> {
             .as_str()
             .ok_or_else(|| anyhow!("cascade incident has no id"))?,
         "approve",
+        "factory_operations",
     )
     .await?;
     ensure!(
@@ -194,13 +225,36 @@ async fn decide(
     base_url: &str,
     incident_id: &str,
     decision: &str,
+    source: &str,
 ) -> Result<Value> {
     Ok(client
         .post(format!("{base_url}/api/incidents/{incident_id}/{decision}"))
-        .json(&json!({"operator_id": "Rehearsal Operator"}))
+        .json(&json!({
+            "operator_id": "Rehearsal Operator",
+            "decision_source": source
+        }))
         .send()
         .await?
         .error_for_status()?
         .json()
         .await?)
+}
+
+async fn wait_for_advisory(client: &Client, base_url: &str, incident_id: &str) -> Result<Value> {
+    for _ in 0..90 {
+        let record: Value = client
+            .get(format!("{base_url}/api/incidents/{incident_id}"))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if record["status"] != "correlating" {
+            return Ok(record);
+        }
+        sleep(TokioDuration::from_secs(2)).await;
+    }
+    Err(anyhow!(
+        "routine advisory did not complete within 180 seconds"
+    ))
 }

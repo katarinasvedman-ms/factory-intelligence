@@ -336,11 +336,11 @@ async fn approve_incident(
     Path(incident_id): Path<String>,
     Json(request): Json<IncidentApprovalRequest>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(
-        state
-            .governed_floor
-            .approve(&incident_id, &request.operator_id)?
-    )))
+    Ok(Json(json!(state.governed_floor.approve(
+        &incident_id,
+        &request.operator_id,
+        request.decision_source.as_deref().unwrap_or("unspecified"),
+    )?)))
 }
 
 async fn reject_incident(
@@ -348,11 +348,11 @@ async fn reject_incident(
     Path(incident_id): Path<String>,
     Json(request): Json<IncidentApprovalRequest>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(
-        state
-            .governed_floor
-            .reject(&incident_id, &request.operator_id)?
-    )))
+    Ok(Json(json!(state.governed_floor.reject(
+        &incident_id,
+        &request.operator_id,
+        request.decision_source.as_deref().unwrap_or("unspecified"),
+    )?)))
 }
 
 pub struct AppError {

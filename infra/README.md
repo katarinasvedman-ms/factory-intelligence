@@ -40,6 +40,49 @@ The `FoundryInferenceAccess` Entra app-role assignment must be completed separat
 because it is a Microsoft Graph operation and requires appropriate directory
 permissions.
 
+## Factory advisory messaging
+
+The machine-to-cluster advisory path is deployed separately from the Agentic
+Retrieval extension:
+
+```powershell
+.\infra\deploy-advisory-messaging.ps1 `
+  -AcrName "<container-registry-name>" `
+  -ForceBuild
+```
+
+The script:
+
+- builds `factory-advisory-worker` in ACR when requested or when its tag is absent;
+- deploys a persistent Mosquitto broker in namespace `factory-messaging`;
+- deploys the durable advisory worker on the factory CPU node pool;
+- creates MQTT and Agentic Retrieval secrets;
+- discovers the external broker address;
+- writes the active non-source-controlled machine settings to `.env.local`.
+
+Verify:
+
+```powershell
+kubectl get pods -n factory-messaging
+kubectl logs deployment/factory-advisory-worker -n factory-messaging --tail=50
+kubectl logs statefulset/factory-mqtt -n factory-messaging --tail=50
+```
+
+Rerun the script without `-ForceBuild` to refresh the time-limited Agentic Retrieval
+token. The script preserves the MQTT password from `.env.local`. If the Kubernetes
+MQTT Secret is changed independently, restart the broker so its generated password
+file matches:
+
+```powershell
+kubectl rollout restart statefulset/factory-mqtt -n factory-messaging
+kubectl rollout status statefulset/factory-mqtt -n factory-messaging --timeout=10m
+```
+
+The evaluation service currently exposes MQTT port 1883 through an Azure load
+balancer. Production factory deployments must use private connectivity and TLS or
+mTLS, and should replace the delegated user token with workload identity or another
+renewable service identity.
+
 ## Prerequisites
 
 - Azure CLI signed in to the target subscription;

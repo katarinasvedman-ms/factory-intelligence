@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Machine HMI · Governed Floor</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261006-6">
+  <link rel="stylesheet" href="/static/styles.css?v=20261007-1">
 </head>
 <body>
   <header class="product-header">
@@ -50,12 +50,18 @@
       </article>
 
       <article class="panel recommendation-panel">
-        <div class="section-kicker">LOCAL FAST ASSESSMENT</div>
-        <h2>Operator guidance</h2>
+        <div class="section-kicker">LOCAL FAST OBSERVATION</div>
+        <h2>Immediate machine state</h2>
         <p id="local-assessment" class="large-copy">No assessment is available yet.</p>
         <div id="candidate-action" class="action-callout" hidden></div>
         <p id="escalation-message" class="muted">The machine will escalate automatically when factory context is required.</p>
       </article>
+    </section>
+
+    <section id="machine-advisory" class="panel advisory-panel">
+      <div class="section-kicker">FACTORY ADVISORY AGENT</div>
+      <h2>Waiting for an incident</h2>
+      <p class="muted">Grounded guidance and operator decisions will appear here.</p>
     </section>
 
     <section class="panel">
@@ -70,6 +76,6 @@
     </section>
   </main>
 
-  <script src="/static/machine.js?v=20261006-6"></script>
+  <script src="/static/machine.js?v=20261008-1"></script>
 </body>
 </html>

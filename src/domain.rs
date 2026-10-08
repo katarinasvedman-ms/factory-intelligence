@@ -359,6 +359,47 @@ pub struct ActionProposal {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvisoryRequest {
+    pub schema_version: u32,
+    pub message_id: String,
+    pub incident_id: String,
+    pub factory_id: String,
+    pub edge_id: String,
+    pub machine_id: String,
+    pub machine_model: String,
+    pub manual_revision: String,
+    pub evidence_version: String,
+    pub occurred_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub alarm: NormalizedAlarm,
+    pub signals: Value,
+    pub local_observation: String,
+    pub response_topic: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdvisoryResponseStatus {
+    Grounded,
+    Ungrounded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvisoryResponse {
+    pub schema_version: u32,
+    pub message_id: String,
+    pub request_message_id: String,
+    pub incident_id: String,
+    pub evidence_version: String,
+    pub status: AdvisoryResponseStatus,
+    pub summary: String,
+    pub proposal: Option<ActionProposal>,
+    pub completed_at: DateTime<Utc>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuardDecision {
     pub decision_id: String,
     pub proposal_id: String,
@@ -430,6 +471,8 @@ pub struct IncidentRecord {
 #[derive(Debug, Clone, Deserialize)]
 pub struct IncidentApprovalRequest {
     pub operator_id: String,
+    #[serde(default)]
+    pub decision_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

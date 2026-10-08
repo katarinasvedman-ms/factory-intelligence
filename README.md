@@ -57,8 +57,8 @@ flowchart LR
         Connector --> Audit
     end
 
-    Fast -- "Factory context required" --> Store
-    Fast -- "Assessed locally" --> Audit
+    Fast -- "Local observation" --> Store
+    Store -- "Request grounded advisory" --> Correlate
     Connector -- "Bounded request" --> HMI
 
     subgraph Fleet["Cloud and fleet operations"]
@@ -82,6 +82,51 @@ submit a proposal, and the Guard independently enforces the action allowlist,
 parameter limits, incident state and operator identity. PLC and safety controls
 remain authoritative outside this advisory demo.
 
+### Factory-local advisory messaging
+
+The default `ADVISORY_TRANSPORT=direct` mode keeps the machine and factory advisory
+workflow in one process for development. Set `ADVISORY_TRANSPORT=mqtt` to separate
+them through a factory-local MQTT broker:
+
+```text
+Machine Rust application
+  -> durable SQLite advisory outbox
+  -> MQTT request topic
+  -> factory-advisory-worker on Kubernetes
+  -> Agentic Retrieval and manuals MCP
+  -> MQTT response topic
+  -> machine SQLite inbox and HMI
+  -> local operator approval and Edge Guard
+```
+
+The machine application has no Agentic Retrieval responsibility in MQTT mode. It
+publishes normalized evidence, receives a grounded proposal, and retains approval
+and execution authority. Requests and responses use MQTT QoS 1 plus stable message
+IDs and SQLite deduplication, so redelivery does not create another proposal or
+execute an action twice.
+
+Deploy the Mosquitto broker and advisory worker to the configured Kubernetes
+cluster with:
+
+```powershell
+.\infra\deploy-advisory-messaging.ps1 -ForceBuild
+```
+
+The script builds the worker in ACR, creates ignored local MQTT credentials,
+deploys a persistent broker and worker, discovers the broker address, and updates
+`.env.local` for the machine application. The initial demo deployment uses a
+password-authenticated broker endpoint on port 1883. A production deployment
+should place the broker on a factory-private network and enable TLS or mTLS.
+
+The worker currently receives an Agentic Retrieval bearer token through a
+Kubernetes secret created by the deployment script. That token expires, so rerun
+the deployment script to refresh it. Production should replace this with workload
+identity or another renewable service identity.
+
+Deployment verification, token refresh, broker restart, troubleshooting and demo
+shutdown procedures are documented in
+[`docs/PRESENTER-RUNBOOK.md`](docs/PRESENTER-RUNBOOK.md).
+
 ## Application views
 
 - `http://127.0.0.1:8000/` or `/machine` — a machine-local HMI showing the active
@@ -94,15 +139,19 @@ remain authoritative outside this advisory demo.
 - `/demo` — presenter controls for deterministic scenarios and technical provider
   diagnostics.
 
-The guided demo is presented as one accumulated factory shift: a routine local
-alarm, a cross-vendor cascade, an unsafe 45% proposal that the Guard rejects, and a
-network-loss incident that queues locally and synchronizes after recovery. Do not
-reset between scenarios. The required final step creates an approved management
-brief for a rolling 24-hour, seven-day or custom scope containing the accumulated
-outcomes. Previewing performs no model call. Generation references the reviewed
-server-side preview so the Expert receives exactly the displayed JSON.
-Application-owned facts remain authoritative while the cloud Expert contributes
-only bounded longer-term reliability recommendations.
+The guided demo is presented as one accumulated factory shift. The first scenario
+shows the machine-local model reporting immediate observations while a grounded
+factory advisory runs asynchronously. The resulting citations and bounded action
+appear on both the Machine HMI and Governed Floor; an operator can decide from
+either view, while the edge Guard remains the single execution authority. The
+shift continues with a cross-vendor cascade, an unsafe 45% proposal that the Guard
+rejects, and a network-loss incident that queues locally and synchronizes after
+recovery. Do not reset between scenarios. The required final step creates an
+approved management brief for a rolling 24-hour, seven-day or custom scope
+containing the accumulated outcomes. Previewing performs no model call. Generation
+references the reviewed server-side preview so the Expert receives exactly the
+displayed JSON. Application-owned facts remain authoritative while the cloud
+Expert contributes only bounded longer-term reliability recommendations.
 
 For the network-loss scenario:
 
@@ -138,6 +187,34 @@ The local demo uses the current Azure CLI identity for Entra authentication.
 `GET /api/demo/fabric/status` reports pending, published, and failed outbox events.
 When Fabric export is disabled or unavailable, incident handling and the current
 local brief continue normally.
+
+### Refresh the seven-day fleet demo
+
+The fleet brief can include two additional synthetic factories without running the
+local application or rebuilding a container. Deploy the Fabric-native PySpark
+notebook and execute it:
+
+```powershell
+.\infra\deploy-fabric-fleet-notebook.ps1 -Run
+```
+
+The notebook writes 27 lifecycle rows for seven incidents directly to the existing
+`factory_incident_events` Eventhouse table. Timestamps are recalculated from the
+current UTC time on every run. Stable event and incident IDs, together with the
+Data Agent's `event_id` deduplication, refresh the represented seven-day period
+without multiplying analytical counts.
+
+The seed includes:
+
+- a correlated coolant-pump and downstream robot incident at Riverton;
+- historical bearing incidents at Riverton and Lakeside;
+- a current recurring bearing incident with a correlated downstream symptom;
+- executed governed actions, one policy rejection, resolved incidents, and active
+  monitoring.
+
+The notebook uses Fabric Spark capacity only while it runs. It bypasses the
+Eventstream for this demo-only historical seed; live application events continue to
+use the governed Eventstream path.
 
 ### Build the Foundry fleet-management agent
 

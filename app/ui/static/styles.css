@@ -113,6 +113,9 @@ th { color: var(--muted); }
 .triage-guidance { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
 .triage-guidance > div { border-left: 3px solid var(--cyan); padding: 4px 0 4px 12px; }
 .triage-guidance p { color: var(--muted); line-height: 1.55; margin: 5px 0 0; }
+.advisory-panel { margin-top: 14px; }
+.advisory-waiting { border-left: 3px solid var(--cyan); padding-left: 14px; }
+.advisory-waiting strong { color: var(--cyan); }
 .timeline article { display: grid; grid-template-columns: 90px 1fr; gap: 16px; border-top: 1px solid var(--border); padding: 12px 0; }
 .timeline article:first-child { border-top: 0; }
 .timeline time { color: var(--muted); font-size: .76rem; }

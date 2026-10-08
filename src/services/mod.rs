@@ -1,4 +1,5 @@
 mod actions;
+mod advisory;
 mod coordinator;
 mod fabric;
 mod governed_floor;
@@ -10,6 +11,10 @@ mod scenarios;
 mod vendors;
 
 pub use actions::ActionService;
+pub use advisory::{
+    AdvisoryMode, AdvisoryProcessor, AdvisorySettings, MqttAdvisoryMachine, MqttAdvisoryWorker,
+    WorkerJobStore,
+};
 pub use coordinator::FastSlowCoordinator;
 pub use fabric::{
     DisabledPublisher, EventHubPublisher, FabricPublicationService, FabricSettings,

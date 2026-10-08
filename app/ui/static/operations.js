@@ -33,32 +33,30 @@ function statusClass(status) {
 
 function routineResponseHtml(record) {
   const triage = record.incident.context.local_triage;
-  if (record.status !== "locally_assessed" || !triage) return "";
+  if (!triage || record.proposal) return "";
+  const queued = triage.advisory_status === "queued";
+  const failed = triage.advisory_status === "failed";
   return `
     <article class="panel local-response-plan">
-      <div class="section-kicker">FAST LOCAL TRIAGE</div>
-      <h2>Inspect within 30 minutes — continue under observation</h2>
-      <p class="large-copy">${escapeHtml(triage.decision)}</p>
+      <div class="section-kicker">FAST LOCAL OBSERVATION</div>
+      <h2>${queued ? "Advisory queued until reconnection" : failed ? "Factory advisory unavailable" : "Awaiting grounded factory advisory"}</h2>
+      <p class="large-copy">${escapeHtml(triage.immediate_safety_status)}</p>
       <div class="triage-grid">
         <div>
           <span>Measured condition</span>
           <strong>${escapeHtml(Number(triage.vibration_mm_s).toFixed(1))} mm/s</strong>
-          <small>${escapeHtml(triage.condition)}<br>${escapeHtml(Number(triage.bearing_temperature_c).toFixed(0))} C bearing temperature</small>
+          <small>${triage.condition ? `${escapeHtml(triage.condition)}<br>` : ""}${escapeHtml(Number(triage.bearing_temperature_c).toFixed(0))} C bearing temperature</small>
         </div>
         <div>
-          <span>Recommended response</span>
-          <strong>Request inspection</strong>
-          <small>${escapeHtml(triage.recommended_action)}</small>
+          <span>Local agent role</span>
+          <strong>Observe and escalate</strong>
+          <small>${escapeHtml(triage.local_role)}</small>
         </div>
         <div>
-          <span>Escalation boundary</span>
-          <strong>7.1 mm/s or 75 C</strong>
-          <small>${escapeHtml(triage.escalation_rule)}</small>
+          <span>Advisory state</span>
+          <strong>${escapeHtml(display(triage.advisory_status))}</strong>
+          <small>${escapeHtml(triage.value)}</small>
         </div>
-      </div>
-      <div class="triage-guidance">
-        <div><strong>Operating guidance</strong><p>${escapeHtml(triage.operating_guidance)}</p></div>
-        <div><strong>Demo value</strong><p>${escapeHtml(triage.value)}</p></div>
       </div>
     </article>`;
 }
@@ -106,7 +104,7 @@ function proposalHtml(record) {
           queued
             ? "The machine handled this incident locally while factory operations were offline. Reconnect from Demo control to synchronize it."
             : monitoring
-              ? "The governed action executed on the upstream machine. Monitor Packer 12 for restored product flow before resolving this downstream incident."
+              ? `The governed action executed on the upstream machine. Monitor ${escapeHtml(record.incident.machine_id)} for restored product flow before resolving this downstream incident.`
             : "This incident is informational, locally assessed, or correlated as a downstream effect."
         }</p>
       </article>`;
@@ -185,7 +183,7 @@ function renderDetail() {
         <div><dt>Connectivity</dt><dd>${escapeHtml(display(incident.connectivity))}</dd></div>
       </dl>
       <div class="local-assessment">
-        <strong>Machine-local decision summary</strong>
+        <strong>Machine-local observation</strong>
         <p>${escapeHtml(incident.local_assessment?.summary || "No local assessment recorded.")}</p>
       </div>
     </article>
@@ -201,7 +199,7 @@ function renderDetail() {
       </div>
     </article>`;
   const proposalEvidence = el("incident-detail").querySelector(".proposal-evidence");
-  if (proposalEvidence?.dataset.proposalId === expandedProposalId) {
+  if (proposalEvidence && proposalEvidence.dataset.proposalId === expandedProposalId) {
     proposalEvidence.open = true;
   }
   document.querySelectorAll("[data-decision]").forEach((button) => {
@@ -214,7 +212,10 @@ async function decide(decision) {
   const response = await fetch(`/api/incidents/${state.selectedId}/${decision}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ operator_id: operatorId }),
+    body: JSON.stringify({
+      operator_id: operatorId,
+      decision_source: "factory_operations",
+    }),
   });
   const body = await response.json();
   if (!response.ok) {

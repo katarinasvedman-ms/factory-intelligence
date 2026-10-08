@@ -12,10 +12,10 @@
 
 - id: single-machine-alarm
   title: Routine machine alarm
-  description: Classify a bounded single-machine synthetic event.
+  description: Summarize a bounded machine event before requesting grounded factory guidance.
   default_prompt: >-
     Machine 08 reports a moderate vibration increase with normal temperature.
-    Classify the synthetic alarm and recommend a safe inspection step.
+    Summarize the observed condition without diagnosing the cause or authorizing an action.
   recommended_target: device
   data_classification: local_only
 
@@ -46,4 +46,3 @@
     including impact, current advisory guidance, and longer-term mitigation themes.
   recommended_target: cloud
   data_classification: cloud_allowed
-

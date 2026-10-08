@@ -27,3 +27,4 @@ data/*.sqlite-*
 target/
 infra/main.json
 infra/main.parameters.json
+docs/PRESENTER-RUNBOOK.md

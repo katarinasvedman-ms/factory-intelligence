@@ -278,17 +278,6 @@ async function runPreflight() {
 
 async function runGuidedScenario(scenarioId, button) {
   const card = button.closest("article");
-  if (scenarioId === "management-brief") {
-    sessionStorage.removeItem("governed-floor-management-preview");
-    sessionStorage.removeItem("governed-floor-management-brief");
-    card.classList.add("scenario-complete");
-    button.textContent = "Opening report builder…";
-    button.disabled = true;
-    el("guided-demo-status").innerHTML =
-      'Opening the scoped management-report workflow. <a href="/management">Review report scope</a>…';
-    window.setTimeout(() => window.location.assign("/management"), 500);
-    return;
-  }
   const destination =
     scenarioId === "routine-local" || scenarioId === "network-loss"
       ? "/machine"
@@ -366,9 +355,9 @@ function renderFabricStatus(status) {
   counts.textContent =
     `${status.pending} pending · ${status.published} published · ${status.failed} failed`;
   if (!status.enabled) {
-    label.textContent = "Local brief active; Fabric export disabled";
+    label.textContent = "Fabric export disabled";
     detail.textContent =
-      "Incidents remain available for the existing governed local brief. Fabric can be enabled independently.";
+      "Operational incident handling remains local. Enable Fabric export for the separate fleet-analysis flow.";
     badge.textContent = "Disabled";
     badge.className = "badge preview";
     return;

@@ -17,8 +17,36 @@ administrator concerns. They are not shown in the machine operator experience.
 
 Two fictional vendor adapters normalize different alarm codes, tag names and units
 into a shared `IncidentPackage`. Incidents and audit events are persisted in SQLite.
-The factory view uses the existing providers for local assessment and Agentic
-Retrieval, then validates every proposed action through the Guard.
+The machine process performs local assessment and exchanges durable advisory
+request/response messages with the AKS worker through MQTT. The worker owns Agentic
+Retrieval. Both operator views read the same machine-side incident state, and every
+proposed action is validated through the local Guard.
+
+## Factory messaging boundary
+
+```text
+Machine Rust application
+  -> SQLite advisory_outbox
+  -> MQTT QoS 1 request
+  -> Mosquitto in the factory Kubernetes cluster
+  -> factory-advisory-worker
+  -> Agentic Retrieval and manuals MCP
+  -> MQTT QoS 1 response
+  -> SQLite advisory_inbox
+  -> Machine HMI / Factory Operations approval
+  -> local Edge Guard and connector
+```
+
+Request and response message IDs are stable. The machine retains a request until a
+correlated response is applied, ignores duplicate responses, and checks the
+`evidence_version` before changing incident state. The worker persists job state and
+replays the stored response for an already completed request. MQTT transport is
+therefore at-least-once while advisory application and machine execution remain
+idempotent.
+
+`ADVISORY_TRANSPORT=direct` preserves the earlier single-process development mode.
+`ADVISORY_TRANSPORT=mqtt` is the separated demo mode: the machine process does not
+invoke Agentic Retrieval for routine advisories.
 
 ## Offline operation and recovery
 
@@ -27,11 +55,12 @@ presenter disconnects the factory cluster, machine-local inference remains
 available. Incidents that require factory context are stored with
 `queued_for_sync=true`, an `offline` connectivity state and an audit event.
 
-Reconnect changes queued incidents to `syncing`, submits each incident to the
-factory Agentic Retrieval path, stores the grounded proposal and citations, then
+Reconnect changes queued incidents to `syncing`. In MQTT mode it transactionally
+enqueues an advisory request; the background publisher sends it when the broker is
+available. The correlated response stores the grounded proposal and citations, then
 marks the incident `connected` and `awaiting_approval`. Synchronization selects only
 records that still have `queued_for_sync=true` and no proposal, so repeated reconnect
-operations are idempotent.
+operations and message redelivery are idempotent.
 
 ## Governed action boundary
 
@@ -56,16 +85,13 @@ Rust / Axum application
    |-- GovernedFloorService
    |-- VendorSimulator
    |-- IncidentStore (SQLite)
+   |-- MqttAdvisoryMachine
    |-- GuardService
    |-- ProviderRegistry
    |
-   v
-IInferenceProvider
-   |-- MockProvider
-   `-- OpenAiCompatibleProvider
-          |-- device configuration
-          |-- edge configuration
-          `-- cloud configuration
+   +--> Device provider
+   +--> MQTT broker --> factory-advisory-worker --> Agentic Retrieval provider
+   `--> Cloud provider
 ```
 
 Scenario and coordination code uses only normalized domain models. Base URLs,
@@ -74,18 +100,21 @@ configuration.
 
 ## Fast and slow flow
 
-1. The primary Robot 17 scenario always starts on the device fast path.
-2. The application evaluates deterministic escalation rules.
-3. Escalation freezes an immutable `EvidenceSnapshot`.
-4. The planned slow path executes peer-machine and maintenance-history tools.
-5. The Agentic Retrieval Agentic Layer runs the configured knowledge base.
-6. The agent invokes the built-in indexed-source MCP server to retrieve local
+1. A machine scenario starts on the device fast path.
+2. The application evaluates deterministic escalation rules and persists the
+   normalized incident.
+3. Escalation freezes an immutable `EvidenceSnapshot` and creates a durable advisory
+   request.
+4. The machine publishes that request to the factory MQTT topic.
+5. The AKS worker claims the request and runs the configured Agentic Retrieval
+   knowledge base.
+6. The agent invokes the authenticated manuals MCP server to retrieve local
    factory manuals and citations from the dedicated collection.
-7. The application records the thread, run, tool steps, and citations.
-8. When the edge result returns, the coordinator compares the current evidence
-   version with the snapshot version.
-9. Guidance is labeled `current` or `stale`. The contract also supports
-   `revalidation_required` and `superseded`.
+7. The worker publishes a summarized advisory and bounded action proposal to the
+   machine-specific response topic.
+8. The machine compares the response evidence version with the current incident,
+   stores citations and displays the proposal on both operator views.
+9. Approval and Guard execution remain local to the machine application.
 
 Model text is never translated directly into a machine command. A grounded proposal
 is stored with its incident and shown in Governed Floor. After an identified operator
@@ -96,12 +125,13 @@ physical equipment.
 ## Controlled action flow
 
 1. A vendor alarm is normalized into the shared incident contract.
-2. The machine-local fast agent produces a bounded assessment.
-3. An incident requiring factory context is persisted and correlated with related
-   machine events.
-4. Agentic Retrieval produces a grounded proposal with source evidence.
-5. Governed Floor shows the proposal to the factory operator.
-6. A named operator approves or rejects the proposal.
+2. The machine-local fast agent produces bounded observations without claiming
+   grounded vendor diagnosis.
+3. An incident requiring guidance is persisted with a durable MQTT request.
+4. The AKS worker uses Agentic Retrieval to produce a grounded proposal with source
+   evidence and returns it over MQTT.
+5. The Machine HMI and Factory Operations show the same proposal.
+6. A named operator approves or rejects from either view; the first decision wins.
 7. `GuardService` checks the action ID, 5-30% limit, incident state and operator.
 8. A permitted recovery limit reaches the simulated connector; an unsafe action is
    blocked. The connector records acceptance but commands no physical equipment.
@@ -114,8 +144,9 @@ authorization, interlocks, protocol validation, outcome verification, and recove
 
 | Condition | Target |
 |---|---|
-| Routine single-machine event | Device |
-| Shared factory context required | Edge cluster |
+| Immediate machine observation | Device |
+| Grounded connected-machine advisory | AKS worker through MQTT |
+| Shared factory context required | AKS worker through MQTT |
 | Approved management/fleet analysis | Cloud |
 | `local_only` classification | Device or edge only |
 

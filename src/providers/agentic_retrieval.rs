@@ -289,40 +289,6 @@ impl AgenticRetrievalProvider {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn extracts_citations_from_json_encoded_tool_results() {
-        let steps = vec![AgenticStepEvidence {
-            step_type: "tool_calls".into(),
-            tool_name: Some("search_factory_manuals".into()),
-            details: json!({
-                "result": r#"{
-                    "results": [{
-                        "title": "Robot 17 Service Manual",
-                        "source": "robot-17-service-manual.md",
-                        "excerpt": "Keep the robot paused until inspection criteria are satisfied."
-                    }]
-                }"#
-            }),
-        }];
-
-        let citations = AgenticRetrievalProvider::step_citations(&steps);
-
-        assert_eq!(citations.len(), 1);
-        assert_eq!(
-            citations[0].source.as_deref(),
-            Some("robot-17-service-manual.md")
-        );
-        assert_eq!(
-            citations[0].title.as_deref(),
-            Some("Robot 17 Service Manual")
-        );
-    }
-}
-
 #[async_trait]
 impl InferenceProvider for AgenticRetrievalProvider {
     fn id(&self) -> &str {
@@ -632,5 +598,39 @@ impl InferenceProvider for AgenticRetrievalProvider {
             }),
             error: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_citations_from_json_encoded_tool_results() {
+        let steps = vec![AgenticStepEvidence {
+            step_type: "tool_calls".into(),
+            tool_name: Some("search_factory_manuals".into()),
+            details: json!({
+                "result": r#"{
+                    "results": [{
+                        "title": "Robot 17 Service Manual",
+                        "source": "robot-17-service-manual.md",
+                        "excerpt": "Keep the robot paused until inspection criteria are satisfied."
+                    }]
+                }"#
+            }),
+        }];
+
+        let citations = AgenticRetrievalProvider::step_citations(&steps);
+
+        assert_eq!(citations.len(), 1);
+        assert_eq!(
+            citations[0].source.as_deref(),
+            Some("robot-17-service-manual.md")
+        );
+        assert_eq!(
+            citations[0].title.as_deref(),
+            Some("Robot 17 Service Manual")
+        );
     }
 }

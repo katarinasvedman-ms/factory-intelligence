@@ -4,9 +4,10 @@ use factory_intelligence::{
     config::load_settings,
     providers::ProviderRegistry,
     services::{
-        ActionService, DisabledPublisher, EventHubPublisher, FabricPublicationService,
-        FabricSettings, FastSlowCoordinator, GovernedFloorService, IncidentEventPublisher,
-        IncidentStore, InferenceService, RoutingPolicy, ScenarioService,
+        ActionService, AdvisoryMode, AdvisorySettings, DisabledPublisher, EventHubPublisher,
+        FabricPublicationService, FabricSettings, FastSlowCoordinator, GovernedFloorService,
+        IncidentEventPublisher, IncidentStore, InferenceService, MqttAdvisoryMachine,
+        RoutingPolicy, ScenarioService,
     },
 };
 use std::{env, sync::Arc};
@@ -29,6 +30,7 @@ async fn main() -> Result<()> {
     let inference = InferenceService::new(settings.application.clone(), registry.clone());
     let coordinator = FastSlowCoordinator::new(scenarios.clone(), RoutingPolicy, inference);
     let fabric_settings = FabricSettings::from_env()?;
+    let advisory_settings = AdvisorySettings::from_env()?;
     let incident_store = IncidentStore::open_default()?;
     let publisher: Arc<dyn IncidentEventPublisher> = if fabric_settings.enabled {
         Arc::new(EventHubPublisher::new(&fabric_settings)?)
@@ -36,9 +38,16 @@ async fn main() -> Result<()> {
         Arc::new(DisabledPublisher)
     };
     let fabric = FabricPublicationService::new(incident_store.clone(), fabric_settings, publisher);
-    let governed_floor =
-        GovernedFloorService::new(incident_store, scenarios.clone(), coordinator.clone());
+    let governed_floor = GovernedFloorService::new(
+        incident_store.clone(),
+        scenarios.clone(),
+        coordinator.clone(),
+        advisory_settings.clone(),
+    );
     tokio::spawn(fabric.clone().run());
+    if advisory_settings.mode == AdvisoryMode::Mqtt {
+        tokio::spawn(MqttAdvisoryMachine::new(incident_store, advisory_settings).run());
+    }
     let state = AppState {
         settings: Arc::new(settings),
         registry,

@@ -1,16 +1,28 @@
 use crate::{
-    domain::{FabricOutboxEvent, FabricPublicationStatus, IncidentRecord},
+    domain::{
+        AdvisoryRequest, AdvisoryResponse, AdvisoryResponseStatus, AuditEvent, FabricOutboxEvent,
+        FabricPublicationStatus, IncidentRecord, IncidentStatus,
+    },
     services::fabric::project_fabric_event,
 };
 use anyhow::{Context, Result, anyhow};
 use chrono::{Duration as ChronoDuration, Utc};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use std::{
     env, fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
 };
+use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct AdvisoryOutboxEvent {
+    pub message_id: String,
+    pub topic: String,
+    pub payload: AdvisoryRequest,
+    pub attempt_count: u32,
+}
 
 #[derive(Clone)]
 pub struct IncidentStore {
@@ -87,6 +99,26 @@ impl IncidentStore {
             );
             CREATE INDEX IF NOT EXISTS idx_fabric_outbox_pending
                 ON fabric_outbox(status, next_attempt_at, occurred_at);
+            CREATE TABLE IF NOT EXISTS advisory_outbox (
+                message_id TEXT PRIMARY KEY,
+                incident_id TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                next_attempt_at TEXT,
+                completed_at TEXT,
+                last_error TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_advisory_outbox_pending
+                ON advisory_outbox(status, next_attempt_at, message_id);
+            CREATE TABLE IF NOT EXISTS advisory_inbox (
+                message_id TEXT PRIMARY KEY,
+                request_message_id TEXT NOT NULL,
+                incident_id TEXT NOT NULL,
+                received_at TEXT NOT NULL,
+                payload_json TEXT NOT NULL
+            );
             ",
         )?;
         Ok(Self {
@@ -96,12 +128,22 @@ impl IncidentStore {
     }
 
     pub fn save(&self, record: &IncidentRecord) -> Result<()> {
-        let json = serde_json::to_string(record)?;
         let mut connection = self
             .connection
             .lock()
             .map_err(|_| anyhow!("incident database lock is poisoned"))?;
         let transaction = connection.transaction()?;
+        self.save_record_in_transaction(&transaction, record)?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    fn save_record_in_transaction(
+        &self,
+        transaction: &Transaction<'_>,
+        record: &IncidentRecord,
+    ) -> Result<()> {
+        let json = serde_json::to_string(record)?;
         transaction.execute(
             "
             INSERT INTO incidents (
@@ -144,8 +186,230 @@ impl IncidentStore {
                 ],
             )?;
         }
+        Ok(())
+    }
+
+    pub fn save_with_advisory_request(
+        &self,
+        record: &IncidentRecord,
+        request: &AdvisoryRequest,
+        topic: &str,
+    ) -> Result<()> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow!("incident database lock is poisoned"))?;
+        let transaction = connection.transaction()?;
+        self.save_record_in_transaction(&transaction, record)?;
+        transaction.execute(
+            "
+            INSERT OR IGNORE INTO advisory_outbox (
+                message_id, incident_id, topic, payload_json, status
+            ) VALUES (?1, ?2, ?3, ?4, 'pending')
+            ",
+            params![
+                request.message_id,
+                request.incident_id,
+                topic,
+                serde_json::to_string(request)?,
+            ],
+        )?;
         transaction.commit()?;
         Ok(())
+    }
+
+    pub fn pending_advisory_requests(&self, limit: usize) -> Result<Vec<AdvisoryOutboxEvent>> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow!("incident database lock is poisoned"))?;
+        let mut statement = connection.prepare(
+            "
+            SELECT message_id, topic, payload_json, attempt_count
+            FROM advisory_outbox
+            WHERE status = 'pending'
+              AND (next_attempt_at IS NULL OR next_attempt_at <= ?1)
+            ORDER BY message_id
+            LIMIT ?2
+            ",
+        )?;
+        let rows = statement.query_map(
+            params![Utc::now().to_rfc3339(), i64::try_from(limit)?],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, u32>(3)?,
+                ))
+            },
+        )?;
+        rows.map(|row| {
+            let (message_id, topic, payload_json, attempt_count) = row?;
+            let payload = serde_json::from_str(&payload_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    payload_json.len(),
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            Ok(AdvisoryOutboxEvent {
+                message_id,
+                topic,
+                payload,
+                attempt_count,
+            })
+        })
+        .collect::<std::result::Result<Vec<_>, rusqlite::Error>>()
+        .map_err(Into::into)
+    }
+
+    pub fn record_advisory_publish_attempt(
+        &self,
+        message_id: &str,
+        retry_after: Duration,
+        error: Option<&str>,
+    ) -> Result<()> {
+        let next_attempt_at = (Utc::now() + ChronoDuration::from_std(retry_after)?).to_rfc3339();
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow!("incident database lock is poisoned"))?;
+        connection.execute(
+            "
+            UPDATE advisory_outbox
+            SET attempt_count = attempt_count + 1,
+                next_attempt_at = ?2,
+                last_error = ?3
+            WHERE message_id = ?1
+            ",
+            params![message_id, next_attempt_at, error],
+        )?;
+        Ok(())
+    }
+
+    pub fn apply_advisory_response(&self, response: &AdvisoryResponse) -> Result<IncidentRecord> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow!("incident database lock is poisoned"))?;
+        let transaction = connection.transaction()?;
+        if transaction
+            .query_row(
+                "SELECT 1 FROM advisory_inbox WHERE message_id = ?1",
+                [&response.message_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some()
+        {
+            let json = transaction.query_row(
+                "SELECT record_json FROM incidents WHERE incident_id = ?1",
+                [&response.incident_id],
+                |row| row.get::<_, String>(0),
+            )?;
+            return serde_json::from_str(&json).context("parse stored incident");
+        }
+        let json = transaction
+            .query_row(
+                "SELECT record_json FROM incidents WHERE incident_id = ?1",
+                [&response.incident_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    anyhow!("unknown advisory incident: {}", response.incident_id)
+                }
+                other => other.into(),
+            })?;
+        let mut record: IncidentRecord =
+            serde_json::from_str(&json).context("parse stored incident")?;
+        let evidence_version = record
+            .incident
+            .context
+            .get("evidence_version")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        if evidence_version != response.evidence_version {
+            return Err(anyhow!(
+                "advisory evidence version does not match the current incident"
+            ));
+        }
+        if record.status != IncidentStatus::Correlating {
+            return Err(anyhow!("incident is not awaiting an advisory response"));
+        }
+        record.incident.context["local_triage"]["advisory_status"] = match response.status {
+            AdvisoryResponseStatus::Grounded => serde_json::json!("available"),
+            AdvisoryResponseStatus::Ungrounded => serde_json::json!("ungrounded"),
+            AdvisoryResponseStatus::Failed => serde_json::json!("failed"),
+        };
+        record.status = match response.status {
+            AdvisoryResponseStatus::Grounded => IncidentStatus::AwaitingApproval,
+            AdvisoryResponseStatus::Ungrounded => IncidentStatus::Escalated,
+            AdvisoryResponseStatus::Failed => IncidentStatus::Failed,
+        };
+        record.proposal = response.proposal.clone();
+        record.updated_at = Utc::now();
+        record.audit.push(AuditEvent {
+            event_id: Uuid::new_v4().to_string(),
+            incident_id: response.incident_id.clone(),
+            event_type: match response.status {
+                AdvisoryResponseStatus::Grounded => "advisory_received",
+                AdvisoryResponseStatus::Ungrounded => "advisory_ungrounded",
+                AdvisoryResponseStatus::Failed => "advisory_failed",
+            }
+            .into(),
+            summary: match response.status {
+                AdvisoryResponseStatus::Grounded => {
+                    "The machine received grounded guidance and a bounded action from the factory advisory worker."
+                }
+                AdvisoryResponseStatus::Ungrounded => {
+                    "The factory advisory response contained no grounded sources, so approval is unavailable."
+                }
+                AdvisoryResponseStatus::Failed => {
+                    "The factory advisory worker could not complete grounded analysis."
+                }
+            }
+            .into(),
+            timestamp: Utc::now(),
+            details: serde_json::json!({
+                "request_message_id": response.request_message_id,
+                "response_message_id": response.message_id,
+                "source_count": response
+                    .proposal
+                    .as_ref()
+                    .map(|proposal| proposal.sources.len())
+                    .unwrap_or_default()
+            }),
+        });
+        self.save_record_in_transaction(&transaction, &record)?;
+        transaction.execute(
+            "
+            INSERT INTO advisory_inbox (
+                message_id, request_message_id, incident_id, received_at, payload_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5)
+            ",
+            params![
+                response.message_id,
+                response.request_message_id,
+                response.incident_id,
+                Utc::now().to_rfc3339(),
+                serde_json::to_string(response)?,
+            ],
+        )?;
+        transaction.execute(
+            "
+            UPDATE advisory_outbox
+            SET status = 'completed',
+                completed_at = ?2,
+                next_attempt_at = NULL,
+                last_error = NULL
+            WHERE message_id = ?1
+            ",
+            params![response.request_message_id, Utc::now().to_rfc3339()],
+        )?;
+        transaction.commit()?;
+        Ok(record)
     }
 
     pub fn get(&self, incident_id: &str) -> Result<IncidentRecord> {
@@ -349,6 +613,8 @@ impl IncidentStore {
         let transaction = connection.transaction()?;
         transaction.execute("DELETE FROM incidents", [])?;
         transaction.execute("DELETE FROM fabric_outbox", [])?;
+        transaction.execute("DELETE FROM advisory_outbox", [])?;
+        transaction.execute("DELETE FROM advisory_inbox", [])?;
         transaction.execute(
             "UPDATE app_state SET value = 'true' WHERE key = 'factory_connected'",
             [],

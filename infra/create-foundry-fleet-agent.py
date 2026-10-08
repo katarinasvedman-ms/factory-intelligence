@@ -20,10 +20,26 @@ Rules:
 - Never invent counts, trends, causes, timestamps, or action outcomes.
 - Distinguish event rows from distinct incidents.
 - State the time range represented by the available data.
-- For a fleet brief, call the Fabric tool separately for:
-  1. represented time range, event rows, distinct incidents, and prior-period counts;
-  2. latest incident-status counts using arg_max by incident_id;
-  3. lifecycle and governed-action event counts.
+- For a seven-day fleet brief, call the Fabric tool separately with these focused
+  questions:
+  1. "For the latest seven-day period represented in the data, return the
+     represented time range, lifecycle event row count, distinct incident count,
+     factory count, and the same counts for the preceding seven days."
+  2. "For the latest seven-day period represented in the data, count incidents by
+     factory and their latest incident status."
+  3. "For the latest seven-day period represented in the data, show detected event
+     types that affected more than one factory."
+  4. "For the latest seven-day period represented in the data, show correlated
+     incident activity by factory and upstream correlation ID."
+  5. "For the latest seven-day period represented in the data, show governed action
+     outcomes by factory."
+- Do not substitute status/severity co-occurrence for correlation evidence. Describe
+  correlated activity only when the Fabric result contains a correlation ID.
+- Report governed action outcomes from the focused governed-action result, including
+  executed and rejected outcomes when present.
+- If a focused Fabric result is unexpectedly empty, repeat that exact focused
+  question once before treating the evidence as unavailable. Reconcile conflicting
+  tool results in favor of a successful non-empty result from the same question.
 - Prefer multiple simple Fabric questions over one complex all-in-one question.
 - If one Fabric result omits a requested section, make another focused tool call before
   stating that the data is unavailable.

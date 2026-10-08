@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: factory-messaging
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-mqtt-config
+  namespace: factory-messaging
+data:
+  mosquitto.conf: |
+    listener 1883 0.0.0.0
+    allow_anonymous false
+    password_file /mosquitto/generated/password_file
+    persistence true
+    persistence_location /mosquitto/data/
+    autosave_interval 30
+    max_packet_size 1048576
+    log_dest stdout
+    log_type error
+    log_type warning
+    log_type notice
+    connection_messages true
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: factory-mqtt
+  namespace: factory-messaging
+spec:
+  serviceName: factory-mqtt
+  replicas: 1
+  selector:
+    matchLabels:
+      app: factory-mqtt
+  template:
+    metadata:
+      labels:
+        app: factory-mqtt
+    spec:
+      nodeSelector:
+        workload: factory-cpu
+      initContainers:
+        - name: create-password-file
+          image: eclipse-mosquitto:2.0
+          command:
+            - sh
+            - -c
+            - mosquitto_passwd -b -c /mosquitto/generated/password_file "$MQTT_USERNAME" "$MQTT_PASSWORD" && chmod 0644 /mosquitto/generated/password_file
+          env:
+            - name: MQTT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: factory-mqtt-credentials
+                  key: username
+            - name: MQTT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: factory-mqtt-credentials
+                  key: password
+          volumeMounts:
+            - name: generated
+              mountPath: /mosquitto/generated
+      containers:
+        - name: broker
+          image: eclipse-mosquitto:2.0
+          ports:
+            - name: mqtt
+              containerPort: 1883
+          volumeMounts:
+            - name: config
+              mountPath: /mosquitto/config
+              readOnly: true
+            - name: generated
+              mountPath: /mosquitto/generated
+              readOnly: true
+            - name: data
+              mountPath: /mosquitto/data
+          readinessProbe:
+            tcpSocket:
+              port: mqtt
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: mqtt
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: factory-mqtt-config
+        - name: generated
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: factory-mqtt
+  namespace: factory-messaging
+spec:
+  type: LoadBalancer
+  selector:
+    app: factory-mqtt
+  ports:
+    - name: mqtt
+      port: 1883
+      targetPort: mqtt
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: factory-mqtt
+  namespace: factory-messaging
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: factory-mqtt

@@ -5,7 +5,8 @@ use crate::{
         ManagementBriefPreviewRequest, Message, ProposedAction, RequestedTarget, RiskLevel,
     },
     services::{
-        FastSlowCoordinator, GuardService, IncidentStore, ScenarioService, VendorSimulator,
+        AdvisoryMode, AdvisoryProcessor, AdvisorySettings, FastSlowCoordinator, GuardService,
+        IncidentStore, ScenarioService, VendorSimulator, advisory::build_advisory_request,
     },
 };
 use anyhow::{Result, anyhow};
@@ -15,6 +16,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     sync::{Arc, Mutex},
 };
+use tracing::error;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -24,7 +26,10 @@ pub struct GovernedFloorService {
     coordinator: FastSlowCoordinator,
     vendors: VendorSimulator,
     guard: GuardService,
+    advisory_settings: AdvisorySettings,
+    advisory_processor: AdvisoryProcessor,
     management_previews: Arc<Mutex<HashMap<String, Value>>>,
+    decision_lock: Arc<Mutex<()>>,
 }
 
 impl GovernedFloorService {
@@ -32,14 +37,19 @@ impl GovernedFloorService {
         store: IncidentStore,
         scenarios: ScenarioService,
         coordinator: FastSlowCoordinator,
+        advisory_settings: AdvisorySettings,
     ) -> Self {
+        let advisory_processor = AdvisoryProcessor::new(scenarios.clone(), coordinator.clone());
         Self {
             store,
             scenarios,
             coordinator,
             vendors: VendorSimulator,
             guard: GuardService,
+            advisory_settings,
+            advisory_processor,
             management_previews: Arc::new(Mutex::new(HashMap::new())),
+            decision_lock: Arc::new(Mutex::new(())),
         }
     }
 
@@ -106,8 +116,23 @@ impl GovernedFloorService {
         }
     }
 
-    pub fn approve(&self, incident_id: &str, operator_id: &str) -> Result<IncidentRecord> {
+    pub fn approve(
+        &self,
+        incident_id: &str,
+        operator_id: &str,
+        source: &str,
+    ) -> Result<IncidentRecord> {
+        let _decision_guard = self
+            .decision_lock
+            .lock()
+            .map_err(|_| anyhow!("incident decision lock is poisoned"))?;
         let mut record = self.store.get(incident_id)?;
+        if record.status != IncidentStatus::AwaitingApproval {
+            if record.guard_decision.is_some() {
+                return Ok(record);
+            }
+            return Err(anyhow!("incident is not awaiting an operator decision"));
+        }
         let proposal = record
             .proposal
             .clone()
@@ -136,6 +161,7 @@ impl GovernedFloorService {
             json!({
                 "decision_id": decision.decision_id,
                 "approved_by": decision.approved_by,
+                "decision_source": normalize_decision_source(source),
                 "executed": decision.executed,
                 "outcome": decision.outcome
             }),
@@ -147,8 +173,26 @@ impl GovernedFloorService {
         Ok(record)
     }
 
-    pub fn reject(&self, incident_id: &str, operator_id: &str) -> Result<IncidentRecord> {
+    pub fn reject(
+        &self,
+        incident_id: &str,
+        operator_id: &str,
+        source: &str,
+    ) -> Result<IncidentRecord> {
+        let _decision_guard = self
+            .decision_lock
+            .lock()
+            .map_err(|_| anyhow!("incident decision lock is poisoned"))?;
         let mut record = self.store.get(incident_id)?;
+        if record.status != IncidentStatus::AwaitingApproval {
+            if record.guard_decision.is_some() {
+                return Ok(record);
+            }
+            return Err(anyhow!("incident is not awaiting an operator decision"));
+        }
+        if operator_id.trim().is_empty() {
+            return Err(anyhow!("an identified operator is required"));
+        }
         let proposal = record
             .proposal
             .clone()
@@ -161,7 +205,10 @@ impl GovernedFloorService {
             incident_id,
             "operator_rejected",
             &decision.reason,
-            json!({"approved_by": decision.approved_by}),
+            json!({
+                "approved_by": decision.approved_by,
+                "decision_source": normalize_decision_source(source)
+            }),
         ));
         self.store.save(&record)?;
         Ok(record)
@@ -440,7 +487,10 @@ impl GovernedFloorService {
             .next()
             .ok_or_else(|| anyhow!("routine scenario produced no alarm"))?;
         let scenario = self.scenarios.get("single-machine-alarm")?;
-        let prompt = incident_prompt(&package, "Assess this alarm locally.");
+        let prompt = incident_prompt(
+            &package,
+            "Summarize only the observed alarm and sensor values. Do not diagnose the cause, invent a maintenance deadline, or authorize a machine action. State that grounded factory guidance is required.",
+        );
         let run = self
             .coordinator
             .run(
@@ -469,6 +519,8 @@ impl GovernedFloorService {
         let advisory_threshold_mm_s = 4.5;
         let escalation_threshold_mm_s = 7.1;
         let temperature_escalation_c = 75.0;
+        let immediate_limit_exceeded = vibration_mm_s >= escalation_threshold_mm_s
+            || bearing_temperature_c >= temperature_escalation_c;
         let percent_above_advisory =
             ((vibration_mm_s / advisory_threshold_mm_s - 1.0) * 100.0).round();
         package.context["local_triage"] = json!({
@@ -479,28 +531,32 @@ impl GovernedFloorService {
             ),
             "vibration_mm_s": vibration_mm_s,
             "bearing_temperature_c": bearing_temperature_c,
-            "recommended_action": "Inspect bearing mounting, sensor seating, and lubrication within 30 minutes.",
-            "operating_guidance": "Continue at current speed under observation; no automatic speed change is authorized.",
-            "escalation_rule": format!(
-                "Escalate if vibration reaches {:.1} mm/s, bearing temperature reaches {:.0} C, or the trend accelerates.",
-                escalation_threshold_mm_s,
-                temperature_escalation_c
-            ),
-            "decision": "Local advisory - inspection required, factory escalation not yet required.",
-            "value": "The machine converted a vendor alarm into a bounded local response plan without waiting for factory or cloud analysis."
+            "immediate_limit_exceeded": immediate_limit_exceeded,
+            "immediate_safety_status": if immediate_limit_exceeded {
+                "A deterministic emergency threshold is exceeded; follow the machine safety procedure while factory guidance is requested."
+            } else {
+                "No deterministic emergency threshold is exceeded. Keep the machine under operator observation while awaiting grounded guidance."
+            },
+            "advisory_status": "requested",
+            "local_role": "The local model summarized the observed condition; it did not diagnose the alarm or authorize an action.",
+            "value": "The machine responded immediately and forwarded the normalized evidence to the factory advisory agent."
         });
         package.local_assessment = Some(LocalAssessment {
             summary: format!(
-                "Vibration is {:.1} mm/s and bearing temperature is {:.0} C. Continue at current speed under observation, inspect the bearing within 30 minutes, and escalate at {:.1} mm/s vibration or {:.0} C.",
+                "Observed vibration is {:.1} mm/s and bearing temperature is {:.0} C. {} Grounded factory guidance has been requested.",
                 vibration_mm_s,
                 bearing_temperature_c,
-                escalation_threshold_mm_s,
-                temperature_escalation_c
+                if immediate_limit_exceeded {
+                    "A deterministic emergency threshold is exceeded."
+                } else {
+                    "No deterministic emergency threshold is exceeded."
+                }
             ),
-            candidate_action_id: Some("request_inspection".into()),
+            candidate_action_id: None,
             confidence: response.confidence,
             model_id: response.model_id,
         });
+        package.context["evidence_version"] = json!(package.timestamp.to_rfc3339());
         let now = Utc::now();
         let record = IncidentRecord {
             audit: vec![
@@ -513,19 +569,87 @@ impl GovernedFloorService {
                 audit_event(
                     &package.incident_id,
                     "local_assessment_completed",
-                    "The machine-local fast agent completed a bounded assessment and recommended inspection.",
-                    json!({"escalated": false, "candidate_action_id": "request_inspection"}),
+                    "The machine-local fast agent summarized the observed condition without diagnosing the alarm.",
+                    json!({"factory_agent_used": false, "action_authorized": false}),
+                ),
+                audit_event(
+                    &package.incident_id,
+                    "advisory_requested",
+                    "The normalized incident was sent to the factory advisory agent for grounded analysis.",
+                    json!({"target": "factory_advisory_agent"}),
                 ),
             ],
             incident: package,
-            status: IncidentStatus::LocallyAssessed,
+            status: IncidentStatus::Correlating,
             proposal: None,
             guard_decision: None,
             created_at: now,
             updated_at: now,
         };
-        self.store.save(&record)?;
+        match self.advisory_settings.mode {
+            AdvisoryMode::Direct => {
+                self.store.save(&record)?;
+                let incident_id = record.incident.incident_id.clone();
+                let service = self.clone();
+                tokio::spawn(async move {
+                    if let Err(advisory_error) =
+                        service.complete_routine_advisory(&incident_id).await
+                    {
+                        error!(
+                            incident_id = %incident_id,
+                            error = %advisory_error,
+                            "routine advisory analysis failed"
+                        );
+                        if let Err(persist_error) =
+                            service.mark_advisory_failed(&incident_id, &advisory_error.to_string())
+                        {
+                            error!(
+                                incident_id = %incident_id,
+                                error = %persist_error,
+                                "failed to persist routine advisory failure"
+                            );
+                        }
+                    }
+                });
+            }
+            AdvisoryMode::Mqtt => {
+                let request = build_advisory_request(&record, &self.advisory_settings);
+                self.store.save_with_advisory_request(
+                    &record,
+                    &request,
+                    &self.advisory_settings.request_topic,
+                )?;
+            }
+        }
         Ok(vec![record])
+    }
+
+    async fn complete_routine_advisory(&self, incident_id: &str) -> Result<()> {
+        let record = self.store.get(incident_id)?;
+        if record.status != IncidentStatus::Correlating || record.proposal.is_some() {
+            return Ok(());
+        }
+        let request = build_advisory_request(&record, &self.advisory_settings);
+        let response = self.advisory_processor.process(&request).await;
+        self.store.apply_advisory_response(&response)?;
+        Ok(())
+    }
+
+    fn mark_advisory_failed(&self, incident_id: &str, message: &str) -> Result<()> {
+        let mut record = self.store.get(incident_id)?;
+        if record.status != IncidentStatus::Correlating {
+            return Ok(());
+        }
+        record.incident.context["local_triage"]["advisory_status"] = json!("failed");
+        record.status = IncidentStatus::Failed;
+        record.updated_at = Utc::now();
+        record.audit.push(audit_event(
+            incident_id,
+            "advisory_failed",
+            "The factory advisory agent could not return grounded guidance.",
+            json!({"error": message}),
+        ));
+        self.store.save(&record)
     }
 
     async fn run_cascade(&self, mut packages: Vec<IncidentPackage>) -> Result<Vec<IncidentRecord>> {
@@ -780,9 +904,30 @@ impl GovernedFloorService {
         let response = local_run
             .fast_response
             .ok_or_else(|| anyhow!("offline scenario returned no local assessment"))?;
+        let vibration_mm_s = package
+            .context
+            .pointer("/signals/vibration_mm_s")
+            .and_then(Value::as_f64)
+            .unwrap_or_default();
+        let bearing_temperature_c = package
+            .context
+            .pointer("/signals/bearing_temperature_c")
+            .and_then(Value::as_f64)
+            .unwrap_or_default();
+        package.context["local_triage"] = json!({
+            "vibration_mm_s": vibration_mm_s,
+            "bearing_temperature_c": bearing_temperature_c,
+            "immediate_safety_status": "The machine recorded the condition locally. Factory-grounded guidance is unavailable while disconnected.",
+            "advisory_status": "queued",
+            "local_role": "The local model summarized the observed condition without diagnosing the cause or authorizing an action.",
+            "value": "The normalized incident is persisted and will be sent to the factory advisory agent after reconnection."
+        });
         package.local_assessment = Some(LocalAssessment {
-            summary: response.content,
-            candidate_action_id: Some("request_inspection".into()),
+            summary: format!(
+                "Observed vibration is {:.1} mm/s and bearing temperature is {:.0} C. Factory-grounded guidance is queued until connectivity recovers.",
+                vibration_mm_s, bearing_temperature_c
+            ),
+            candidate_action_id: None,
             confidence: response.confidence,
             model_id: response.model_id,
         });
@@ -829,6 +974,29 @@ impl GovernedFloorService {
             json!({}),
         ));
         self.store.save(&record)?;
+
+        if self.advisory_settings.mode == AdvisoryMode::Mqtt {
+            record.incident.connectivity = ConnectivityState::Connected;
+            record.incident.context["queued_for_sync"] = json!(false);
+            record.incident.context["evidence_version"] =
+                json!(record.incident.timestamp.to_rfc3339());
+            record.incident.context["local_triage"]["advisory_status"] = json!("requested");
+            record.status = IncidentStatus::Correlating;
+            record.updated_at = Utc::now();
+            record.audit.push(audit_event(
+                &record.incident.incident_id,
+                "advisory_requested",
+                "The recovered incident was queued for the factory advisory worker.",
+                json!({"transport": "mqtt"}),
+            ));
+            let request = build_advisory_request(&record, &self.advisory_settings);
+            self.store.save_with_advisory_request(
+                &record,
+                &request,
+                &self.advisory_settings.request_topic,
+            )?;
+            return Ok(record);
+        }
 
         let factory_scenario = self.scenarios.get("cross-machine-correlation")?;
         let local_summary = record
@@ -975,6 +1143,15 @@ fn audit_event(
     }
 }
 
+fn normalize_decision_source(source: &str) -> &'static str {
+    match source {
+        "machine_hmi" => "machine_hmi",
+        "factory_operations" => "factory_operations",
+        "rehearsal" => "rehearsal",
+        _ => "unspecified",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1016,7 +1193,12 @@ mod tests {
                     raw_text: "test".into(),
                     severity: "critical".into(),
                 },
-                context: json!({}),
+                context: json!({
+                    "signals": {
+                        "vibration_mm_s": 5.4,
+                        "bearing_temperature_c": 61.0
+                    }
+                }),
                 local_assessment: None,
                 connectivity: ConnectivityState::Connected,
             },

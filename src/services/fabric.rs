@@ -281,6 +281,7 @@ fn sanitize_details(details: &Value) -> Value {
         "source_count",
         "upstream_incident_id",
         "decision_id",
+        "decision_source",
         "executed",
         "outcome",
         "expected_response",

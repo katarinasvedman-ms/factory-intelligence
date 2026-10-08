@@ -1,5 +1,7 @@
-use crate::domain::{ActionProposal, GuardDecision, IncidentRecord, IncidentStatus};
-use chrono::Utc;
+use crate::domain::{
+    ActionProposal, ConnectivityState, GuardDecision, IncidentRecord, IncidentStatus,
+};
+use chrono::{Duration, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Default)]
@@ -29,8 +31,20 @@ impl GuardService {
         if record.status != IncidentStatus::AwaitingApproval {
             return reject("The incident is not awaiting an operator decision.".into());
         }
+        if record.incident.connectivity != ConnectivityState::Connected {
+            return reject("The machine is not connected for governed execution.".into());
+        }
         if proposal.incident_id != record.incident.incident_id {
             return reject("The proposal does not reference the current incident.".into());
+        }
+        if Utc::now().signed_duration_since(proposal.created_at) > Duration::minutes(10) {
+            return reject(
+                "The proposal is stale and must be refreshed against current machine evidence."
+                    .into(),
+            );
+        }
+        if record.incident.context.pointer("/signals").is_none() {
+            return reject("Current machine measurements are unavailable.".into());
         }
         if proposal.proposed_action.action_id != "reduce_speed" {
             return reject(format!(

@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: factory-advisory-worker
+  namespace: factory-messaging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: factory-advisory-worker
+  template:
+    metadata:
+      labels:
+        app: factory-advisory-worker
+    spec:
+      nodeSelector:
+        workload: factory-cpu
+      containers:
+        - name: worker
+          image: __IMAGE__
+          imagePullPolicy: Always
+          env:
+            - name: DEMO_CONFIG
+              value: config/demo.aks-agentic.yaml
+            - name: ADVISORY_TRANSPORT
+              value: mqtt
+            - name: FACTORY_ID
+              value: __FACTORY_ID__
+            - name: EDGE_ID
+              value: __EDGE_ID__
+            - name: MQTT_HOST
+              value: factory-mqtt.factory-messaging.svc.cluster.local
+            - name: MQTT_PORT
+              value: "1883"
+            - name: MQTT_TLS
+              value: "false"
+            - name: MQTT_CLIENT_ID
+              value: factory-advisory-worker
+            - name: MQTT_REQUEST_TOPIC
+              value: __REQUEST_TOPIC__
+            - name: MQTT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: factory-mqtt-credentials
+                  key: username
+            - name: MQTT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: factory-mqtt-credentials
+                  key: password
+            - name: EDGE_AGENTIC_BASE_URL
+              value: __AGENTIC_BASE_URL__
+            - name: EDGE_AGENT_ID
+              value: __AGENT_ID__
+            - name: EDGE_AGENTIC_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: factory-advisory-agentic
+                  key: token
+            - name: ADVISORY_WORKER_DB_PATH
+              value: /app/state/advisory-worker.db
+          volumeMounts:
+            - name: data
+              mountPath: /app/state
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - test -f /app/state/advisory-worker.db
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: factory-advisory-worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: factory-advisory-worker
+  namespace: factory-messaging
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
