@@ -7,9 +7,9 @@ independent alarms. Governed Floor demonstrates how local and factory AI can hel
 operators correlate those events without placing a model in the safety or real-time
 control loop.
 
-A Rust-based Factory Operations Assistant demonstrating one application-owned
-inference contract across a machine-local fast path, a shared factory edge-cluster
-slow path, and a policy-approved cloud expert path. The combined-mode Agentic
+A Rust-based Factory Operations Assistant demonstrating a machine-local fast path,
+an MQTT-separated factory edge-cluster slow path, deterministic operator governance,
+and a separate Fabric and Foundry fleet-analytics path. The validated Agentic
 Retrieval configuration supports an evidence-bound, operator-approved
 speed-reduction request through a simulated machine connector.
 
@@ -23,58 +23,67 @@ flowchart LR
         Normalize["Vendor normalization"]
         Package["Common incident package"]
         Fast["Fast local agent<br/>Qwen on the machine"]
+        Store[("SQLite incidents,<br/>audit, outbox and inbox")]
         HMI["Machine HMI"]
+        Operations["Factory Operations view"]
+        Decision{"Operator<br/>approves?"}
+        Guard{"Local Guard<br/>allowlist · limits · state"}
+        Connector["Simulated machine connector"]
+        Audit["Governed audit event"]
 
         VA --> Normalize
         VB --> Normalize
         Normalize --> Package
         Package --> Fast
-        Fast --> HMI
-    end
-
-    subgraph Factory["Factory cluster and operations"]
-        Store[("SQLite incident<br/>and audit store")]
-        Correlate["Cross-machine correlator"]
-        Slow["Slow factory agent<br/>Agentic Retrieval on AKS"]
-        Sources["Manuals MCP<br/>and factory context"]
-        Proposal["Grounded action proposal<br/>with citations"]
-        Operations["Governed Floor<br/>operator view"]
-        Decision{"Operator<br/>approves?"}
-        Guard{"Guard<br/>allowlist · limits · state"}
-        Connector["Simulated machine connector"]
-        Audit["Immutable audit event"]
-
-        Store --> Correlate
-        Correlate --> Slow
-        Sources --> Slow
-        Slow --> Proposal
-        Proposal --> Operations
+        Fast --> Store
+        Store --> HMI
+        Store --> Operations
+        HMI --> Decision
         Operations --> Decision
         Decision -- Approve --> Guard
         Decision -- Reject --> Audit
         Guard -- Permitted --> Connector
         Guard -- Blocked --> Audit
         Connector --> Audit
+        Audit --> Store
     end
 
-    Fast -- "Local observation" --> Store
-    Store -- "Request grounded advisory" --> Correlate
-    Connector -- "Bounded request" --> HMI
+    subgraph Factory["Factory Kubernetes cluster"]
+        Broker["Mosquitto<br/>MQTT broker"]
+        Worker["factory-advisory-worker"]
+        Slow["Agentic Retrieval<br/>on Arc-connected AKS"]
+        Sources["Manuals MCP<br/>and factory context"]
+        Proposal["Grounded action proposal<br/>with citations"]
+
+        Broker --> Worker
+        Worker --> Slow
+        Sources --> Slow
+        Slow --> Proposal
+        Proposal --> Worker
+        Worker --> Broker
+    end
+
+    Store -- "MQTT QoS 1 request" --> Broker
+    Broker -- "MQTT QoS 1 response" --> Store
 
     subgraph Fleet["Cloud and fleet operations"]
-        Scope["Time range and report mode"]
-        Preview["Minimized cloud_allowed snapshot"]
-        Review{"Review exact payload"}
-        Expert["Cloud Expert<br/>fleet reliability analysis"]
-        Brief["Management brief<br/>across factories"]
+        FabricOutbox["Sanitized Fabric event outbox"]
+        Eventstream["Fabric Eventstream"]
+        Eventhouse["Eventhouse<br/>factory_incident_events"]
+        Seed["Fabric notebook<br/>two synthetic factories"]
+        DataAgent["Fabric Data Agent<br/>factory-fleet-analyst"]
+        FleetAgent["Foundry prompt agent<br/>factory-fleet-manager"]
+        Brief["Seven-day fleet brief"]
 
-        Scope --> Preview
-        Preview --> Review
-        Review -- "Approved preview ID" --> Expert
-        Expert --> Brief
+        FabricOutbox --> Eventstream
+        Eventstream --> Eventhouse
+        Seed --> Eventhouse
+        Eventhouse --> DataAgent
+        DataAgent --> FleetAgent
+        FleetAgent --> Brief
     end
 
-    Store -- "Approved incident outcomes" --> Scope
+    Audit -- "Sanitized lifecycle projection" --> FabricOutbox
 ```
 
 The LLM never sends a machine command directly. The operator decides whether to
@@ -84,9 +93,9 @@ remain authoritative outside this advisory demo.
 
 ### Factory-local advisory messaging
 
-The default `ADVISORY_TRANSPORT=direct` mode keeps the machine and factory advisory
-workflow in one process for development. Set `ADVISORY_TRANSPORT=mqtt` to separate
-them through a factory-local MQTT broker:
+`ADVISORY_TRANSPORT=direct` remains available for single-process development. The
+validated presentation uses `ADVISORY_TRANSPORT=mqtt`, separating the machine and
+factory advisory worker through a factory-local MQTT broker:
 
 ```text
 Machine Rust application
@@ -120,12 +129,8 @@ should place the broker on a factory-private network and enable TLS or mTLS.
 
 The worker currently receives an Agentic Retrieval bearer token through a
 Kubernetes secret created by the deployment script. That token expires, so rerun
-the deployment script to refresh it. Production should replace this with workload
-identity or another renewable service identity.
-
-Deployment verification, token refresh, broker restart, troubleshooting and demo
-shutdown procedures are documented in
-[`docs/PRESENTER-RUNBOOK.md`](docs/PRESENTER-RUNBOOK.md).
+the deployment script to refresh it and restart the worker. Production should
+replace this with workload identity or another renewable service identity.
 
 ## Application views
 
@@ -133,9 +138,8 @@ shutdown procedures are documented in
   alarm, normalized vendor context, local fast assessment, connectivity and timeline.
 - `/operations` — the Governed Floor factory view with the incident queue,
   cross-vendor correlation, grounded sources, operator decisions and Guard outcomes.
-- `/management` — a scoped post-incident reporting workflow: select a time range,
-  inspect the exact minimized cloud payload, approve its server-held preview ID,
-  then generate factual outcomes plus bounded Expert recommendations.
+- `/management` — an optional local scoped-reporting workflow retained for
+  development; it is not part of the guided presentation.
 - `/demo` — presenter controls for deterministic scenarios and technical provider
   diagnostics.
 
@@ -146,12 +150,10 @@ appear on both the Machine HMI and Governed Floor; an operator can decide from
 either view, while the edge Guard remains the single execution authority. The
 shift continues with a cross-vendor cascade, an unsafe 45% proposal that the Guard
 rejects, and a network-loss incident that queues locally and synchronizes after
-recovery. Do not reset between scenarios. The required final step creates an
-approved management brief for a rolling 24-hour, seven-day or custom scope
-containing the accumulated outcomes. Previewing performs no model call. Generation
-references the reviewed server-side preview so the Expert receives exactly the
-displayed JSON. Application-owned facts remain authoritative while the cloud
-Expert contributes only bounded longer-term reliability recommendations.
+recovery. Do not reset between scenarios. The final presentation step moves to
+Fabric to show the governed analytical events and Data Agent, then uses the
+`factory-fleet-manager` prompt agent in Foundry to create a seven-day fleet brief.
+The analytics path has no machine-control authority.
 
 For the network-loss scenario:
 
@@ -164,13 +166,13 @@ For the network-loss scenario:
 Connectivity state and queued incidents are persisted in SQLite. Repeated reconnect
 operations do not create duplicate proposals.
 
-## Optional Fabric fleet publication
+## Fabric and Foundry fleet analytics
 
-The existing local management brief remains the default and does not depend on
-Fabric. An optional background publisher can also project the incident audit history
-into governed, append-only fleet events for a Fabric Eventstream custom endpoint.
-The application stores each projected event in the same SQLite transaction as the
-incident snapshot, retries delivery independently, and deduplicates by `event_id`.
+Operational incident handling does not depend on Fabric. An optional background
+publisher projects the live application audit history into governed, append-only
+fleet events through a Fabric Eventstream custom endpoint. The application stores
+each projected event in the same SQLite transaction as the incident snapshot,
+retries delivery independently, and deduplicates by `event_id`.
 
 Only an allowlisted event projection is published. Raw alarm text, operator identity,
 model reasoning, manual content, credentials, and infrastructure details are
@@ -185,8 +187,8 @@ FABRIC_EVENTHUB_NAME=<eventstream-entity-name>
 
 The local demo uses the current Azure CLI identity for Entra authentication.
 `GET /api/demo/fabric/status` reports pending, published, and failed outbox events.
-When Fabric export is disabled or unavailable, incident handling and the current
-local brief continue normally.
+When Fabric export is disabled or unavailable, machine assessment, advisory
+messaging, operator approval and Guard execution continue normally.
 
 ### Refresh the seven-day fleet demo
 
@@ -242,8 +244,8 @@ columns, publish it, create a new Foundry agent version, and run a live smoke te
 .\infra\configure-foundry-fleet-agent.ps1 -SmokeTest
 ```
 
-The local management brief remains independent of this path. The Foundry/Fabric
-agent is an optional fleet-analytics path and has no machine-control authority.
+The Foundry/Fabric agent is a fleet-analytics path and has no machine-control
+authority. The optional local `/management` workflow remains independent of it.
 
 Run the end-to-end guided rehearsal against a started application with:
 
@@ -341,10 +343,12 @@ OpenAI-compatible service has identical URL construction.
 
 ## Configure the Agentic Retrieval slow path
 
-Deploy Agentic Retrieval in `combined` mode, ingest the synthetic corpus under
-`data\knowledge\source`, create an indexed-source MCP knowledge source, and link it
-to the default knowledge base. For the AKS demo, copy `.env.example` to the ignored
-`.env.local` file and set:
+The validated AKS evaluation deploys Agentic Retrieval in CPU-only `agentic` mode.
+An internal bridge uses AKS Workload Identity to invoke the keyless Foundry GPT-5
+mini deployment, and the default knowledge base uses the authenticated remote
+manuals MCP source. The deployment sequence is documented in `infra\README.md`.
+
+For the AKS demo, copy `.env.example` to the ignored `.env.local` file and set:
 
 ```dotenv
 FACTORY_AGENTIC_DOMAIN=<agentic-retrieval-domain>
@@ -358,13 +362,15 @@ FOUNDRY_EXPERT_MODEL=<expert-model-deployment>
 Then start the complete demo directly:
 
 ```powershell
+.\infra\deploy-advisory-messaging.ps1
 .\run-aks-agentic-demo.ps1
 ```
 
 Explicit parameters and existing process environment variables take precedence
 over `.env.local`. When the configured AKS cluster is stopped, the launcher starts
-it and waits for Agentic Retrieval to become available. The lower-level
-Agentic-only launcher can still be run with:
+it and waits for Agentic Retrieval to become available. The advisory deployment
+command refreshes the worker's time-limited Agentic token and restarts the worker.
+The lower-level Agentic-only launcher can still be run with:
 
 ```powershell
 .\run-agentic-demo.ps1 `

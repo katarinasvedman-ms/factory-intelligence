@@ -153,23 +153,13 @@ authorization, interlocks, protocol validation, outcome verification, and recove
 Explicit operator selection is allowed, but selecting cloud for `local_only` data is
 rejected before a provider call.
 
-Management reporting uses a separate governed data boundary:
+The optional local `/management` route retains a separate scoped-report workflow for
+development, but it is not part of the guided presentation. The presenter fleet
+brief uses the Fabric and Foundry analytical boundary below.
 
-1. The user selects a bounded time range and report mode.
-2. The application filters persisted incidents and creates a minimized
-   `cloud_allowed` JSON snapshot.
-3. The UI displays the exact payload and excluded data categories without calling a
-   model.
-4. The server retains that immutable preview under a generated preview ID.
-5. Explicit generation references the preview ID, ensuring the Expert receives the
-   reviewed snapshot rather than client-supplied or newly selected data.
-6. The application derives factual counts and outcomes; the Expert contributes only
-   longer-term reliability recommendations and has no machine authority.
+## Fabric and Foundry fleet-analysis boundary
 
-## Optional Fabric publication boundary
-
-Fabric publication supplements rather than replaces the existing local management
-brief. `IncidentStore` persists the mutable incident snapshot and inserts sanitized
+`IncidentStore` persists the mutable incident snapshot and inserts sanitized
 audit-event projections into `fabric_outbox` within the same SQLite transaction.
 The audit `event_id` is the outbox primary key, making repeated incident saves
 idempotent.
@@ -188,17 +178,36 @@ background Event Hubs publisher
         |
         v
 Fabric Eventstream -> Eventhouse
+                           ^
+                           |
+               rerunnable Fabric notebook
+                           |
+                           v
+                  Fabric Data Agent
+                           |
+                           v
+                  Foundry fleet agent
+                           |
+                           v
+                  seven-day fleet brief
 ```
 
 The publisher never participates in incident handling, operator approval, Guard
-evaluation, machine recovery, or local brief generation. A Fabric failure records a
-bounded error and retry schedule in the outbox while factory operations continue.
-Publication is disabled unless `FABRIC_EXPORT_ENABLED=true`.
+evaluation or machine recovery. A Fabric failure records a bounded error and retry
+schedule in the outbox while factory operations continue. Publication is disabled
+unless `FABRIC_EXPORT_ENABLED=true`.
 
 The fleet event projection includes factory, line, machine, incident, lifecycle
 event, status, severity and explicitly approved detail fields. It excludes raw alarm
 text, operator identity, model reasoning, manual content, credentials, endpoints and
 connector details.
+
+The Fabric notebook adds a small rolling seven-day history for two synthetic
+factories directly to Eventhouse. Stable event IDs and Data Agent query-time
+deduplication make reruns refresh the represented period without multiplying
+logical counts. The `factory-fleet-analyst` Data Agent returns structured evidence;
+the `factory-fleet-manager` Foundry prompt agent orchestrates focused queries and
+synthesizes the brief. Neither component has machine authority.
 
 ## Evidence and observability
 
@@ -221,7 +230,8 @@ Device model startup, Azure Local model deployment, local evaluation, and model
 updates are not part of the portable scenario layer. They remain deployment or
 operator workflows and must be validated against the target environment.
 
-The slow path uses Agentic Retrieval in Foundry Local in `combined` mode. Agentic
-Retrieval owns ingestion, chunking, embeddings, Milvus vector storage, PostgreSQL
-metadata, retrieval, threads, runs, and citations. The default knowledge base calls
-the built-in indexed-source MCP server for the factory-maintenance collection.
+The validated slow path uses Agentic Retrieval 0.9.3 in `agentic` mode on
+Arc-connected AKS. An internal model bridge uses AKS Workload Identity to invoke the
+keyless Foundry GPT-5 mini deployment. The knowledge base calls the authenticated
+remote manuals MCP source, while Agentic Retrieval owns thread, run, tool and
+citation orchestration.

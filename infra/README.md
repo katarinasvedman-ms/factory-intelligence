@@ -31,9 +31,10 @@ cluster onboarding, preview extension workflows, Helm, and Entra application IDs
 - Azure Arc connection;
 - NVIDIA GPU operator;
 - certificate and trust-manager extension;
-- Foundry Local inference operator;
-- Foundry Local model deployment;
-- Agentic Retrieval extension in `combined` mode;
+- optional Foundry Local inference operator and model deployment for GPU combined
+  mode;
+- Agentic Retrieval extension in either GPU combined mode or the validated CPU-only
+  `agentic` mode backed by the internal Foundry model bridge;
 - Azure RBAC assignments available after extension identities exist.
 
 The `FoundryInferenceAccess` Entra app-role assignment must be completed separately
@@ -69,9 +70,10 @@ kubectl logs statefulset/factory-mqtt -n factory-messaging --tail=50
 ```
 
 Rerun the script without `-ForceBuild` to refresh the time-limited Agentic Retrieval
-token. The script preserves the MQTT password from `.env.local`. If the Kubernetes
-MQTT Secret is changed independently, restart the broker so its generated password
-file matches:
+token. The script preserves the MQTT password from `.env.local` and automatically
+restarts the advisory worker so it reads the refreshed token. If the Kubernetes MQTT
+Secret is changed independently, restart the broker so its generated password file
+matches:
 
 ```powershell
 kubectl rollout restart statefulset/factory-mqtt -n factory-messaging
@@ -150,8 +152,9 @@ To validate the inexpensive base resources before GPU quota is available:
   -SkipGpuPool
 ```
 
-Agentic Retrieval and the Foundry Local model cannot become operational without the
-required GPU capacity.
+GPU capacity is required only for the optional combined-mode deployment. The
+validated CPU-only Agentic design can use `-SkipGpuPool` because model inference is
+provided by the keyless cloud Foundry deployment through the internal bridge.
 
 ## 3. Create the Entra applications
 
