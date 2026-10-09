@@ -257,6 +257,9 @@ async function runPreflight() {
       } else if (status && !status.configured) {
         stateName = "Not configured";
         detail = status.message;
+      } else if (status && status.authenticated === false) {
+        stateName = "Authentication failed";
+        detail = status.message;
       } else if (status && status.reachable) {
         stateName = "Ready";
         detail = status.message;
@@ -475,7 +478,7 @@ async function initialize() {
       </article>
     `;
   }).join("");
-  await refreshFactoryConnectivity();
+  await Promise.all([refreshFactoryConnectivity(), refreshFabricStatus()]);
   scenarioChanged();
 }
 

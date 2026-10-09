@@ -13,6 +13,28 @@ function display(value) {
   return String(value ?? "").replaceAll("_", " ");
 }
 
+function excerptHtml(excerpt) {
+  if (!excerpt) return "";
+  const trimmed = excerpt.trim();
+  const suffix = /[.!?…]$/.test(trimmed) ? "" : " …";
+  return `<p><span class="muted">Retrieved excerpt:</span> ${escapeHtml(trimmed)}${suffix}</p>`;
+}
+
+function uniqueSources(sources) {
+  const merged = new Map();
+  for (const source of sources) {
+    const key = String(source.source || source.title || "").trim().toLowerCase();
+    if (!key) continue;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...source });
+    } else if ((source.excerpt?.length || 0) > (existing.excerpt?.length || 0)) {
+      existing.excerpt = source.excerpt;
+    }
+  }
+  return [...merged.values()];
+}
+
 function technicalTextHtml(text, sourceCount) {
   return escapeHtml(text)
     .replace(/\[cite:(\d+)\]/gi, (_, value) => {
@@ -109,14 +131,15 @@ function proposalHtml(record) {
         }</p>
       </article>`;
   }
-  const grounded = proposal.sources.length > 0;
-  const citations = proposal.sources.length
-    ? proposal.sources.map((source, index) => `
+  const sources = uniqueSources(proposal.sources);
+  const grounded = sources.length > 0;
+  const citations = grounded
+    ? sources.map((source, index) => `
         <li id="proposal-source-${index + 1}">
           <span class="source-number">[${index + 1}]</span>
           <strong>${escapeHtml(source.title || "Factory source")}</strong>
           <span>${escapeHtml(source.source || "")}</span>
-          ${source.excerpt ? `<p>${escapeHtml(source.excerpt)}</p>` : ""}
+          ${excerptHtml(source.excerpt)}
         </li>`).join("")
     : "<li>No grounded source was returned. This proposal cannot be approved.</li>";
   const operatorSummary = proposal.operator_summary ||
@@ -148,10 +171,10 @@ function proposalHtml(record) {
       ${decisionHtml}
       ${controls}
       <details class="proposal-evidence" data-proposal-id="${escapeHtml(proposal.proposal_id)}">
-        <summary>View technical analysis and ${proposal.sources.length} retrieved source${proposal.sources.length === 1 ? "" : "s"}</summary>
+        <summary>View technical analysis and ${sources.length} retrieved source${sources.length === 1 ? "" : "s"}</summary>
         <div class="proposal-evidence-body">
           <h3>Technical agent output</h3>
-          <p class="technical-output">${technicalTextHtml(proposal.reasoning, proposal.sources.length)}</p>
+          <p class="technical-output">${technicalTextHtml(proposal.reasoning, sources.length)}</p>
           <h3>Retrieved sources</h3>
           <ol class="citation-list">${citations}</ol>
         </div>

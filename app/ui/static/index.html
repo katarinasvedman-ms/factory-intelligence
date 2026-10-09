@@ -34,6 +34,26 @@
       </div>
     </section>
 
+    <section class="architecture" aria-label="Demo architecture">
+      <article><span>FAST</span><strong>Machine device</strong><small>Local, bounded response</small></article>
+      <div class="arrow">→</div>
+      <article><span>SLOW</span><strong id="slow-architecture-title">Factory edge agent</strong><small id="slow-architecture-detail">Tools, manuals, and shared correlation</small></article>
+      <div class="arrow">→</div>
+      <article><span>EXPERT</span><strong id="expert-architecture-title">Approved cloud</strong><small id="expert-architecture-detail">Fleet analysis</small></article>
+    </section>
+
+    <section class="panel environment-panel">
+      <div class="panel-header">
+        <div>
+          <h2>Environment status</h2>
+          <p class="muted">Check connectivity to the machine, factory, and cloud environments before running the demo.</p>
+        </div>
+        <button id="preflight" class="secondary">Check environments</button>
+      </div>
+      <div id="providers" class="provider-grid"></div>
+      <div id="preflight-status" class="preflight-status" role="status" aria-live="polite"></div>
+    </section>
+
     <section class="panel connectivity-panel">
       <div>
         <div class="section-kicker">FLEET PUBLICATION</div>
@@ -83,26 +103,6 @@
         </article>
       </div>
       <div id="guided-demo-status" class="preflight-status" role="status" aria-live="polite"></div>
-    </section>
-
-    <section class="architecture" aria-label="Architecture status">
-      <article><span>FAST</span><strong>Machine device</strong><small>Local, bounded response</small></article>
-      <div class="arrow">→</div>
-      <article><span>SLOW</span><strong id="slow-architecture-title">Factory edge agent</strong><small id="slow-architecture-detail">Tools, manuals, and shared correlation</small></article>
-      <div class="arrow">→</div>
-      <article><span>EXPERT</span><strong id="expert-architecture-title">Approved cloud</strong><small id="expert-architecture-detail">Fleet analysis</small></article>
-    </section>
-
-    <section class="panel environment-panel">
-      <div class="panel-header">
-        <div>
-          <h2>Environment status</h2>
-          <p class="muted">Check connectivity to the machine, factory, and cloud environments.</p>
-        </div>
-        <button id="preflight" class="secondary">Check environments</button>
-      </div>
-      <div id="providers" class="provider-grid"></div>
-      <div id="preflight-status" class="preflight-status" role="status" aria-live="polite"></div>
     </section>
 
     <details class="advanced-console">
@@ -199,6 +199,6 @@
 
   </main>
 
-  <script src="/static/app.js?v=20261007-1"></script>
+  <script src="/static/app.js?v=20261009-1"></script>
 </body>
 </html>

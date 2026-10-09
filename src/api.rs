@@ -184,16 +184,16 @@ async fn preflight(State(state): State<AppState>) -> Json<PreflightResult> {
         })
         .collect::<Vec<_>>();
     let ready = !expected.is_empty()
-        && expected
-            .iter()
-            .all(|status| status.configured && status.reachable);
+        && expected.iter().all(|status| {
+            status.configured && status.reachable && status.authenticated != Some(false)
+        });
     Json(PreflightResult {
         providers: statuses,
         ready,
         message: if ready {
-            "All enabled providers are configured and reachable".into()
+            "All enabled providers are configured, reachable, and authenticated".into()
         } else {
-            "One or more enabled providers are not configured or reachable".into()
+            "One or more enabled providers are not configured, reachable, or authenticated".into()
         },
     })
 }

@@ -13,6 +13,28 @@ function display(value) {
   return String(value ?? "").replaceAll("_", " ");
 }
 
+function excerptHtml(excerpt) {
+  if (!excerpt) return "";
+  const trimmed = excerpt.trim();
+  const suffix = /[.!?…]$/.test(trimmed) ? "" : " …";
+  return `<p><span class="muted">Retrieved excerpt:</span> ${escapeHtml(trimmed)}${suffix}</p>`;
+}
+
+function uniqueSources(sources) {
+  const merged = new Map();
+  for (const source of sources) {
+    const key = String(source.source || source.title || "").trim().toLowerCase();
+    if (!key) continue;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...source });
+    } else if ((source.excerpt?.length || 0) > (existing.excerpt?.length || 0)) {
+      existing.excerpt = source.excerpt;
+    }
+  }
+  return [...merged.values()];
+}
+
 function advisoryHtml(record) {
   const proposal = record.proposal;
   const triage = record.incident.context.local_triage;
@@ -51,15 +73,16 @@ function advisoryHtml(record) {
       </div>`;
   }
 
-  const grounded = proposal.sources.length > 0;
+  const sources = uniqueSources(proposal.sources);
+  const grounded = sources.length > 0;
   const reduction = proposal.proposed_action.parameters.reduction_percent;
   const citations = grounded
-    ? proposal.sources.map((source, index) => `
+    ? sources.map((source, index) => `
         <li>
           <span class="source-number">[${index + 1}]</span>
           <strong>${escapeHtml(source.title || "Factory source")}</strong>
           <span>${escapeHtml(source.source || "")}</span>
-          ${source.excerpt ? `<p>${escapeHtml(source.excerpt)}</p>` : ""}
+          ${excerptHtml(source.excerpt)}
         </li>`).join("")
     : "<li>No grounded source was returned. Approval is unavailable.</li>";
   const decision = record.guard_decision;
@@ -87,7 +110,7 @@ function advisoryHtml(record) {
     ${decisionHtml}
     ${controls}
     <details class="proposal-evidence" data-proposal-id="${escapeHtml(proposal.proposal_id)}">
-      <summary>View technical response and ${proposal.sources.length} retrieved source${proposal.sources.length === 1 ? "" : "s"}</summary>
+      <summary>View technical response and ${sources.length} retrieved source${sources.length === 1 ? "" : "s"}</summary>
       <div class="proposal-evidence-body">
         <h3>Advisory-agent response</h3>
         <p class="technical-output">${escapeHtml(proposal.reasoning).replaceAll("\n", "<br>")}</p>

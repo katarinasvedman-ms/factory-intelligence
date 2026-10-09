@@ -287,6 +287,47 @@ impl AgenticRetrievalProvider {
         }
         citations
     }
+
+    fn merge_citations(citations: Vec<KnowledgeCitation>) -> Vec<KnowledgeCitation> {
+        let mut merged: Vec<KnowledgeCitation> = Vec::new();
+        for citation in citations {
+            let key = citation
+                .source
+                .as_deref()
+                .or(citation.title.as_deref())
+                .map(|value| value.trim().to_lowercase());
+            let Some(key) = key else {
+                continue;
+            };
+            let existing = merged.iter_mut().find(|candidate| {
+                candidate
+                    .source
+                    .as_deref()
+                    .or(candidate.title.as_deref())
+                    .is_some_and(|value| value.trim().eq_ignore_ascii_case(&key))
+            });
+            if let Some(existing) = existing {
+                if existing.title.is_none() {
+                    existing.title = citation.title;
+                }
+                if existing.source.is_none() {
+                    existing.source = citation.source;
+                }
+                let incoming_is_better = citation.excerpt.as_ref().is_some_and(|incoming| {
+                    existing
+                        .excerpt
+                        .as_ref()
+                        .is_none_or(|current| incoming.len() > current.len())
+                });
+                if incoming_is_better {
+                    existing.excerpt = citation.excerpt;
+                }
+            } else {
+                merged.push(citation);
+            }
+        }
+        merged
+    }
 }
 
 #[async_trait]
@@ -561,11 +602,7 @@ impl InferenceProvider for AgenticRetrievalProvider {
                 &right.excerpt,
             ))
         });
-        citations.dedup_by(|left, right| {
-            left.source == right.source
-                && left.title == right.title
-                && left.excerpt == right.excerpt
-        });
+        let citations = Self::merge_citations(citations);
 
         ChatResponse {
             request_id: request.request_id.clone(),
@@ -631,6 +668,30 @@ mod tests {
         assert_eq!(
             citations[0].title.as_deref(),
             Some("Robot 17 Service Manual")
+        );
+    }
+
+    #[test]
+    fn merges_duplicate_document_citations_and_keeps_the_best_excerpt() {
+        let citations = vec![
+            KnowledgeCitation {
+                title: Some("Incident Report 124".into()),
+                source: Some("incident-report-124.md".into()),
+                excerpt: None,
+            },
+            KnowledgeCitation {
+                title: Some("Incident Report 124".into()),
+                source: Some("incident-report-124.md".into()),
+                excerpt: Some("The corrective workflow was:".into()),
+            },
+        ];
+
+        let merged = AgenticRetrievalProvider::merge_citations(citations);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merged[0].excerpt.as_deref(),
+            Some("The corrective workflow was:")
         );
     }
 }

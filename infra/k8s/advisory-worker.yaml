@@ -5,6 +5,8 @@ metadata:
   namespace: factory-messaging
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: factory-advisory-worker
