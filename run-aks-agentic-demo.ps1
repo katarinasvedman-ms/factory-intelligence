@@ -134,6 +134,48 @@ if (-not $edgeToken) {
     throw "Unable to acquire the Agentic Retrieval token. Run az login and try again."
 }
 
+$advisoryTransport = if ([string]::IsNullOrWhiteSpace($env:ADVISORY_TRANSPORT)) {
+    "direct"
+}
+else {
+    $env:ADVISORY_TRANSPORT.Trim().ToLowerInvariant()
+}
+if ($advisoryTransport -eq "mqtt") {
+    if ([string]::IsNullOrWhiteSpace($ResourceGroup) -or [string]::IsNullOrWhiteSpace($ClusterName)) {
+        throw "FACTORY_RESOURCE_GROUP and FACTORY_CLUSTER_NAME are required to refresh the MQTT advisory worker token."
+    }
+
+    az aks get-credentials `
+        --resource-group $ResourceGroup `
+        --name $ClusterName `
+        --admin `
+        --overwrite-existing `
+        --only-show-errors
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to refresh AKS credentials for the MQTT advisory worker."
+    }
+
+    kubectl create secret generic factory-advisory-agentic `
+        --namespace factory-messaging `
+        --from-literal="token=$edgeToken" `
+        --dry-run=client `
+        --output yaml |
+        kubectl apply --filename -
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to refresh the MQTT advisory worker Agentic token."
+    }
+
+    kubectl rollout restart deployment/factory-advisory-worker `
+        --namespace factory-messaging
+    kubectl rollout status deployment/factory-advisory-worker `
+        --namespace factory-messaging `
+        --timeout 10m
+    if ($LASTEXITCODE -ne 0) {
+        throw "The MQTT advisory worker did not become ready after its token refresh."
+    }
+    Write-Host "Refreshed the MQTT advisory worker Agentic token."
+}
+
 $foundryToken = az account get-access-token `
     --scope "https://cognitiveservices.azure.com/.default" `
     --query accessToken `

@@ -368,8 +368,11 @@ Then start the complete demo directly:
 
 Explicit parameters and existing process environment variables take precedence
 over `.env.local`. When the configured AKS cluster is stopped, the launcher starts
-it and waits for Agentic Retrieval to become available. The advisory deployment
-command refreshes the worker's time-limited Agentic token and restarts the worker.
+it and waits for Agentic Retrieval to become available. The advisory deployment command refreshes the worker's time-limited Agentic token
+and restarts the worker. When MQTT transport is configured,
+`run-aks-agentic-demo.ps1` also performs this refresh on every demo start so the
+machine application and Kubernetes advisory worker cannot begin with different
+token lifetimes.
 The lower-level Agentic-only launcher can still be run with:
 
 ```powershell
@@ -414,6 +417,60 @@ cargo run --bin factory-eval -- --deployment "<deployment-name>"
 
 Use `EDGE_CONTROL_PLANE_AUTH_MODE=bearer` for bearer authentication. The script
 prints only results returned by the platform and never fabricates evaluation output.
+
+## Next steps
+
+### Machine-local manual grounding
+
+Extend the single-machine fast path so that it can use an approved manual stored
+beside the machine. The repository already includes a `local_rag_openai` provider
+that loads Markdown files, selects relevant documents through lexical matching and
+adds their contents to the model prompt. It is not currently enabled for the Device
+provider, and local assessments do not yet persist or display document citations.
+
+A complete machine-local implementation should:
+
+- select the manual by machine model, firmware and manual revision;
+- retrieve only the relevant alarm or maintenance sections;
+- retain the model response and local citations in the incident record;
+- continue to operate when the factory connection is unavailable; and
+- keep deterministic thresholds, safety controls and action authorization outside
+  the model.
+
+This path can run entirely on a machine-side industrial PC. Foundry Local is the
+preferred runtime where the hardware and selected model are supported. Smaller
+gateways, including Raspberry Pi-class ARM64 devices, should prioritize deterministic
+normalization, compact mapping catalogs and local document lookup. A small quantized
+model can optionally summarize retrieved evidence, but the design must not depend on
+local generative inference for safety or real-time control.
+
+### Governed alarm-normalization workbench
+
+The current demo normalizes two fictional vendor formats and four alarm codes through
+hardcoded Rust adapters. A broader application could ingest machine manuals, alarm
+tables, PLC or SCADA tag dictionaries, firmware metadata and historical maintenance
+outcomes, then use a stronger model to propose a shared factory alarm taxonomy.
+
+Each proposed mapping should include the raw vendor code, canonical code, component,
+condition, normalized severity, signal and unit conversions, applicable machine and
+firmware versions, source citations, confidence and approval status. Engineers would
+review ambiguous and safety-relevant proposals before publishing a versioned mapping
+catalog.
+
+At runtime, machines should apply approved mappings deterministically. A machine-local
+agent may use its manual to suggest a provisional mapping for an unknown code, but it
+must preserve the raw alarm, identify the result as provisional and escalate it for
+validation. This separates large-model knowledge creation from predictable machine
+execution:
+
+```text
+Manuals and engineering data
+  -> strong-model mapping proposals
+  -> engineering review
+  -> versioned normalization catalog
+  -> deterministic machine-side normalization
+  -> local-agent assistance for unknown alarms
+```
 
 ## Safety and data
 

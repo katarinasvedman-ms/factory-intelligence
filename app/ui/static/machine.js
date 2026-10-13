@@ -13,6 +13,12 @@ function display(value) {
   return String(value ?? "").replaceAll("_", " ");
 }
 
+function actionLabel(action) {
+  return action?.action_id === "reduce_speed"
+    ? "Set controlled-restart speed limit"
+    : display(action?.action_id);
+}
+
 function excerptHtml(excerpt) {
   if (!excerpt) return "";
   const trimmed = excerpt.trim();
@@ -104,7 +110,7 @@ function advisoryHtml(record) {
     <p class="large-copy operator-summary">${escapeHtml(proposal.operator_summary)}</p>
     <div class="proposal-action">
       <span>Proposed machine action</span>
-      <strong>${escapeHtml(display(proposal.proposed_action.action_id))}${reduction ? ` · ${reduction}%` : ""}</strong>
+      <strong>${escapeHtml(actionLabel(proposal.proposed_action))}${reduction ? ` · ${reduction}%` : ""}</strong>
       <span class="badge preview">${escapeHtml(display(proposal.proposed_action.risk_level))} risk</span>
     </div>
     ${decisionHtml}
@@ -131,7 +137,7 @@ function render(record) {
   el("machine-subtitle").textContent =
     `${incident.vendor_profile} · ${incident.machine_model} · Firmware ${incident.firmware_version}`;
   el("operating-state").textContent =
-    record.status === "executed" ? "Controlled reduction active" :
+    record.status === "executed" ? "Recovery speed limit configured" :
     incident.alarm.severity === "critical" ? "Attention required" : "Running under observation";
   el("connectivity").textContent = display(incident.connectivity);
   el("incident-status").textContent = display(record.status);
@@ -150,7 +156,7 @@ function render(record) {
   const action = el("candidate-action");
   if (record.proposal) {
     action.hidden = false;
-    action.textContent = `Factory proposal: ${display(record.proposal.proposed_action.action_id)}`;
+    action.textContent = `Factory proposal: ${actionLabel(record.proposal.proposed_action)}`;
   } else {
     action.hidden = true;
   }

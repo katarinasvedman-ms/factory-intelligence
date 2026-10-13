@@ -52,6 +52,17 @@ impl GuardService {
                 proposal.proposed_action.action_id
             ));
         }
+        if proposal
+            .proposed_action
+            .parameters
+            .get("execution_mode")
+            .and_then(serde_json::Value::as_str)
+            != Some("controlled_restart_limit")
+        {
+            return reject(
+                "The action does not declare controlled-restart-limit semantics.".into(),
+            );
+        }
         let Some(percent) = proposal
             .proposed_action
             .parameters
@@ -70,12 +81,12 @@ impl GuardService {
             proposal_id: proposal.proposal_id.clone(),
             incident_id: record.incident.incident_id.clone(),
             permitted: true,
-            reason: "Action is allowlisted, bounded, current, and explicitly approved.".into(),
+            reason: "The controlled-restart limit is allowlisted, bounded, current, and explicitly approved. It does not start the machine or override lockout/tagout.".into(),
             checked_at: Utc::now(),
             approved_by: Some(operator_id.trim().into()),
             executed: true,
             outcome: Some(format!(
-                "Simulated connector accepted a {percent}% speed reduction for {}.",
+                "Simulated connector configured a {percent}% reduced-speed limit for a future controlled restart of {}. No start command was sent.",
                 record.incident.machine_id
             )),
         }

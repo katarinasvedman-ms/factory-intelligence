@@ -13,6 +13,12 @@ function display(value) {
   return String(value ?? "").replaceAll("_", " ");
 }
 
+function actionLabel(action) {
+  return action?.action_id === "reduce_speed"
+    ? "Set controlled-restart speed limit"
+    : display(action?.action_id);
+}
+
 function excerptHtml(excerpt) {
   if (!excerpt) return "";
   const trimmed = excerpt.trim();
@@ -165,7 +171,7 @@ function proposalHtml(record) {
       <p class="large-copy operator-summary">${escapeHtml(operatorSummary)}</p>
       <div class="proposal-action">
         <span>Proposed governed action</span>
-        <strong>${escapeHtml(display(proposal.proposed_action.action_id))}${reduction ? ` · ${reduction}%` : ""}</strong>
+        <strong>${escapeHtml(actionLabel(proposal.proposed_action))}${reduction ? ` · ${reduction}%` : ""}</strong>
         <span class="badge preview">${escapeHtml(display(proposal.proposed_action.risk_level))} risk</span>
       </div>
       ${decisionHtml}

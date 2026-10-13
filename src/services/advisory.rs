@@ -164,7 +164,7 @@ impl AdvisoryProcessor {
                     Message {
                         role: "user".into(),
                         content: format!(
-                            "Retrieve the applicable machine manual guidance and analyze this alarm using only grounded evidence. Return a concise operator-facing advisory in at most 160 words. Explain the likely condition, the immediate inspection priority, and whether a bounded 15% speed reduction is a reasonable temporary action. Do not claim that an action has executed. Do not narrate planning or tool calls. Do not emit [cite:N] markers because citations are rendered separately.\nIncident evidence:\n{}",
+                            "Retrieve the applicable machine manual guidance and analyze this alarm using only grounded evidence. Return a concise operator-facing advisory in at most 160 words. Explain the likely condition and immediate safety or inspection priority. Separately assess whether configuring a 15% reduced-speed limit for a future controlled restart after inspection and maintenance clearance is reasonable. This control does not start the machine or override lockout/tagout. Do not claim that an action has executed. Do not narrate planning or tool calls. Do not emit [cite:N] markers because citations are rendered separately.\nIncident evidence:\n{}",
                             serde_json::to_string_pretty(&package)?
                         ),
                     },
@@ -198,7 +198,7 @@ impl AdvisoryProcessor {
         let grounded = !sources.is_empty();
         let summary = operator_advisory_summary(&slow.content).unwrap_or_else(|| {
             format!(
-                "The factory advisory worker retrieved {} applicable manual source{}. Verify the vibration and temperature readings, inspect bearing mounting and lubrication, and keep the machine under observation. A temporary 15% speed reduction is available for operator review; the Edge Guard will recheck current machine evidence before execution.",
+                "The factory advisory worker retrieved {} applicable manual source{}. Verify the vibration and temperature readings, inspect bearing mounting and lubrication, and keep the machine in its safe state. After inspection and maintenance clearance, a 15% reduced-speed limit can be configured for a future controlled restart; the Edge Guard will recheck current evidence, and the action will not start the machine.",
                 sources.len(),
                 if sources.len() == 1 { "" } else { "s" }
             )
@@ -211,10 +211,13 @@ impl AdvisoryProcessor {
                 request.machine_id
             ),
             operator_summary: summary.clone(),
-            reasoning: summary.clone(),
+            reasoning: slow.content,
             proposed_action: ProposedAction {
                 action_id: "reduce_speed".into(),
-                parameters: serde_json::json!({"reduction_percent": 15}),
+                parameters: serde_json::json!({
+                    "reduction_percent": 15,
+                    "execution_mode": "controlled_restart_limit"
+                }),
                 risk_level: RiskLevel::Medium,
             },
             sources,

@@ -661,7 +661,7 @@ impl GovernedFloorService {
         let local_scenario = self.scenarios.get("single-machine-alarm")?;
         let prompt = incident_prompt(
             &upstream,
-            "Correlate the upstream stop with the related downstream alarm. Return concise operator-facing guidance in at most 180 words. Do not narrate planning or tool calls. Do not emit [cite:N] markers because citations are rendered separately. Identify the likely root cause, the immediate inspection priority, and only a governed action.",
+            "Correlate the upstream stop with the related downstream alarm. Return concise operator-facing guidance in at most 180 words. Do not narrate planning or tool calls. Do not emit [cite:N] markers because citations are rendered separately. Separate the immediate safety and inspection guidance from the conditional governed recovery control. The only available control is configuring a 15% reduced-speed limit for a future controlled restart after inspection and maintenance clearance; it does not start the stopped machine or override lockout/tagout. State whether that conditional limit is consistent with the retrieved evidence.",
         );
         let local_run = self
             .coordinator
@@ -729,11 +729,14 @@ impl GovernedFloorService {
             root_cause_hypothesis:
                 "The upstream press drive trip caused the downstream packer starvation alarm."
                     .into(),
-            operator_summary: "Press 04 stopped after a bearing-vibration trip. Packer 12 then reported loss of upstream product flow, making the packer alarm a likely downstream effect. Inspect the Press 04 bearing, sensors, mounting and lubrication condition before restart. A bounded 15% speed reduction is available for operator review.".into(),
+            operator_summary: "Press 04 stopped after a bearing-vibration trip. Packer 12 then reported loss of upstream product flow, making the packer alarm a likely downstream effect. Keep Press 04 offline and inspect the bearing, sensors, mounting and lubrication condition. After maintenance clearance, a 15% reduced-speed limit can be configured for a future controlled restart; this action does not start the press or override lockout/tagout.".into(),
             reasoning: slow.content,
             proposed_action: ProposedAction {
                 action_id: "reduce_speed".into(),
-                parameters: json!({"reduction_percent": 15}),
+                parameters: json!({
+                    "reduction_percent": 15,
+                    "execution_mode": "controlled_restart_limit"
+                }),
                 risk_level: RiskLevel::Medium,
             },
             sources,
@@ -832,7 +835,10 @@ impl GovernedFloorService {
             reasoning: "The replay intentionally proposes a value outside the governed limit to demonstrate enforcement.".into(),
             proposed_action: ProposedAction {
                 action_id: "reduce_speed".into(),
-                parameters: json!({"reduction_percent": 45}),
+                parameters: json!({
+                    "reduction_percent": 45,
+                    "execution_mode": "controlled_restart_limit"
+                }),
                 risk_level: RiskLevel::High,
             },
             sources: vec![KnowledgeCitation {
@@ -1052,11 +1058,14 @@ impl GovernedFloorService {
             incident_id: record.incident.incident_id.clone(),
             root_cause_hypothesis:
                 "Factory analysis completed after the offline incident synchronized.".into(),
-            operator_summary: "The machine handled the incident locally while factory operations were offline. After reconnect, the factory agent retrieved supporting guidance and prepared a bounded 15% speed-reduction proposal for operator review.".into(),
+            operator_summary: "The machine handled the incident locally while factory operations were offline. After reconnect, the factory agent retrieved supporting guidance. After inspection and maintenance clearance, a bounded 15% reduced-speed limit can be configured for a future controlled restart; it does not start the machine.".into(),
             reasoning: slow.content,
             proposed_action: ProposedAction {
                 action_id: "reduce_speed".into(),
-                parameters: json!({"reduction_percent": 15}),
+                parameters: json!({
+                    "reduction_percent": 15,
+                    "execution_mode": "controlled_restart_limit"
+                }),
                 risk_level: RiskLevel::Medium,
             },
             sources,
@@ -1169,7 +1178,10 @@ mod tests {
             reasoning: "test".into(),
             proposed_action: ProposedAction {
                 action_id: "reduce_speed".into(),
-                parameters: json!({"reduction_percent": 45}),
+                parameters: json!({
+                    "reduction_percent": 45,
+                    "execution_mode": "controlled_restart_limit"
+                }),
                 risk_level: RiskLevel::High,
             },
             sources: vec![],
@@ -1177,7 +1189,7 @@ mod tests {
             created_at: Utc::now(),
         };
         let now = Utc::now();
-        let record = IncidentRecord {
+        let mut record = IncidentRecord {
             incident: IncidentPackage {
                 incident_id: incident_id.clone(),
                 machine_id: "Robot 17".into(),
@@ -1214,5 +1226,24 @@ mod tests {
         let decision = guard.evaluate(&record, record.proposal.as_ref().unwrap(), "Operator");
         assert!(!decision.permitted);
         assert!(decision.reason.contains("exceeds"));
+
+        record.proposal.as_mut().unwrap().proposed_action.parameters =
+            json!({"reduction_percent": 15});
+        let decision = guard.evaluate(&record, record.proposal.as_ref().unwrap(), "Operator");
+        assert!(!decision.permitted);
+        assert!(decision.reason.contains("controlled-restart-limit"));
+
+        record.proposal.as_mut().unwrap().proposed_action.parameters = json!({
+            "reduction_percent": 15,
+            "execution_mode": "controlled_restart_limit"
+        });
+        let decision = guard.evaluate(&record, record.proposal.as_ref().unwrap(), "Operator");
+        assert!(decision.permitted);
+        assert!(
+            decision
+                .outcome
+                .as_deref()
+                .is_some_and(|outcome| outcome.contains("No start command was sent"))
+        );
     }
 }
